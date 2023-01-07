@@ -12,7 +12,6 @@ import chen.yyds.py.impl.ProjectServerImpl;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.ui.JBColor;
-import com.intellij.ui.components.JBLabel;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTextArea;
 import com.intellij.ui.components.JBTextField;
@@ -35,34 +34,32 @@ public class ImageToolForm {
     JTree uiDumpTree;
     JBScrollPane uiTreeScrollPanel;
 
-    public String fetchScreenShot() {
-        projectServer = (ProjectServerImpl)mProject.getService(ProjectServer.class);
-        if (projectServer == null || !projectServer.isClientConnectOk()) {
-            ProjectServerImpl.showNotification("连接调试设备失败!" + projectServer);
-            return null;
+    public boolean checkDeviceConnectFailed() {
+        if (projectServer == null || projectServer.isClientConnectOk()) {
+            Notifyer.notifyError("开发助手","连接调试设备失败!" + projectServer);
+            return true;
+        } else {
+            return false;
         }
-        String imagePath = projectServer.getScreenShot();
-        return imagePath;
+    }
+
+    public String fetchScreenShot() {
+        if (checkDeviceConnectFailed()) return null;
+        return projectServer.getScreenShot();
     }
 
     public String fetchUiaDump() {
-        projectServer = (ProjectServerImpl)mProject.getService(ProjectServer.class);
-        if (projectServer == null || !projectServer.isClientConnectOk()) {
-            ProjectServerImpl.showNotification("连接调试设备失败!" + projectServer);
-            return null;
-        }
-        String xmlPath = projectServer.getUiaDump();
-        return xmlPath;
+        if (checkDeviceConnectFailed()) return null;
+        return projectServer.getUiaDump();
     }
 
     public String fetchForeground() {
-        projectServer = (ProjectServerImpl)mProject.getService(ProjectServer.class);
-        if (projectServer == null || !projectServer.isClientConnectOk()) {
-            ProjectServerImpl.showNotification("连接调试设备失败!" + projectServer);
-            return null;
-        }
-        String xmlPath = projectServer.getForeground();
-        return xmlPath;
+        if (checkDeviceConnectFailed()) return null;
+        return projectServer.getForeground();
+    }
+
+    interface OnScreenDoubleClickEvent {
+        void onDoubleClick(int x, int y);
     }
 
     interface OnScreenRectSelectedEvent {
@@ -75,6 +72,7 @@ public class ImageToolForm {
 
     public ImageToolForm(Project project, ToolWindow toolWindow) {
         this.mProject = project;
+        this.projectServer = (ProjectServerImpl)mProject.getService(ProjectServer.class);
         panel1.setLayout(null);
         panel1.setBackground(JBColor.background());
         toolWindow.setAutoHide(false);
@@ -91,14 +89,13 @@ public class ImageToolForm {
         imgLabel.setForeground(JBColor.green);
         imgLabel.setBorder(new LineBorder(JBColor.green, 2));
 
-        JButton buttonLoadScreen = new JButton("载入截图");
+        JButton buttonLoadScreen = new JButton("截图载入");
         //buttonLoadScreen.setBackground(new Color(69,73,74));
         buttonLoadScreen.setForeground(JBColor.foreground());
         buttonLoadScreen.setVisible(true);
         buttonLoadScreen.setSize(130, 40);
 
-
-        JButton buttonLoadUiaDump = new JButton("载入控件信息");
+        JButton buttonLoadUiaDump = new JButton("控件载入");
         //buttonLoadUiaDump.setBackground(new Color(69,73,74));
         buttonLoadUiaDump.setForeground(JBColor.foreground());
         buttonLoadUiaDump.setVisible(true);
@@ -140,13 +137,32 @@ public class ImageToolForm {
             }
         };
         ScreenPanel screenShotPanel = new ScreenPanel(300, 450, onScreenRectSelectedEvent, onUiSelectedEvent);
+        screenShotPanel.onScreenDoubleClickEvent = new OnScreenDoubleClickEvent() {
+            @Override
+            public void onDoubleClick(int x, int y) {
+                LOGGER.warn("Double Click call back parent" + "x= " + x + "y=" + y);
+                new Thread(()-> {
+                    boolean isSuccess = projectServer.click(x, y);
+                    if (isSuccess) {
+                        SwingUtilities.invokeLater(new Runnable() {
+                            @Override
+                            public void run() {
+                                for (ActionListener ac : buttonLoadScreen.getActionListeners()) {
+                                    ac.actionPerformed(null);
+                                }
+                            }
+                        });
+                    }
+                }).start();
+            }
+        };
+
         LOGGER.warn("ScreenPanelA w:" + screenShotPanel.getWidth() + "  h:" + screenShotPanel.getHeight());
         screenShotPanel.setLocation(10, panelMargin);
         screenShotPanel.setVisible(true);
 
         JBTextField textField = new JBTextField();
         textField.setSize(100, 30);
-
 
         panel1.add(screenShotPanel);
         panel1.add(label);
@@ -222,12 +238,12 @@ public class ImageToolForm {
                 if (fetchScreenShot != null) {
                     screenShotPanel.resetDrawImage(fetchScreenShot);
                 } else {
-                    ProjectServerImpl.showNotification("截图失败，请联系开发者处理!");
+                    Notifyer.notifyError("开发助手", "截图失败，请联系开发者处理!");
                     return;
                 }
                 // 要加载两次图片，尝试调整两次！
-                panel1.setSize(screenShotPanel.getWidth() + panelMargin, panel1.getHeight()+1);
-                panel1.setSize(screenShotPanel.getWidth() + panelMargin, panel1.getHeight()-1);
+                panel1.setSize(screenShotPanel.getWidth() + panelMargin, panel1.getHeight() + 1);
+                panel1.setSize(screenShotPanel.getWidth() + panelMargin, panel1.getHeight() - 1);
                 // 如果只加载截图，防止图片对不上控件，那就清空当前控件查找列表
                 if (e != null && uiDumpTree != null) {
                     uiDumpTree.removeAll();
@@ -251,11 +267,11 @@ public class ImageToolForm {
 
                 String uiXmlPath = fetchUiaDump();
                 if (uiXmlPath == null) {
-                    ProjectServerImpl.showNotification("获取控件信息失败！请联系开发者解决");
+                    Notifyer.notifyError("开发助手","获取控件信息失败！请联系开发者解决");
                     return;
                 }
                 String foreground = fetchForeground();
-                if (uiXmlPath != null && foreground != null) {
+                if (foreground != null) {
                     uiDumpTree = new Tree(HierarchyParser.INSTANCE.parse(uiXmlPath, new DefaultMutableTreeNode("<前台>" + foreground)));
                     uiDumpTree.setForeground(JBColor.green);
                     uiDumpTree.setVisible(true);

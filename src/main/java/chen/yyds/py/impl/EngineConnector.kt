@@ -1,233 +1,239 @@
 package impl
 
-import chen.yyds.py.impl.ZipUtility
+import chen.yyds.py.impl.RpcDataModel
 import com.intellij.openapi.diagnostic.Logger
-import java.io.File
-import java.io.InputStream
-import java.io.OutputStream
-import java.net.Socket
-import java.nio.charset.Charset
+import io.ktor.client.*
+import io.ktor.client.plugins.*
+import io.ktor.client.plugins.logging.*
+import io.ktor.client.plugins.websocket.*
+import io.ktor.client.request.*
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.*
+import io.ktor.util.*
+import io.ktor.websocket.*
+import io.ktor.websocket.serialization.*
+import io.netty.util.Timeout
+import kotlinx.coroutines.*
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.cbor.Cbor
+import java.util.*
+import java.util.concurrent.ConcurrentSkipListMap
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 
-fun byteArrayToInt(b: ByteArray): Int {
-    return b[3].toInt() and 0xFF or (
-            b[2].toInt() and 0xFF shl 8) or (
-            b[1].toInt() and 0xFF shl 16) or (
-            b[0].toInt() and 0xFF shl 24)
-}
-
-fun intToByteArray(a: Int): ByteArray {
-    return byteArrayOf(
-            (a shr 24 and 0xFF).toByte(),
-            (a shr 16 and 0xFF).toByte(),
-            (a shr 8 and 0xFF).toByte(),
-            (a and 0xFF).toByte()
+@OptIn(ExperimentalSerializationApi::class)
+abstract class EngineConnector {
+    private val LOGGER = Logger.getInstance(
+        EngineConnector::class.java
     )
-}
 
-object CmdCode {
-    const val CODE_RUN:Byte = 1
-    const val CODE_STOP:Byte = 2
-    const val CODE_RECV_FILE:Byte = 3
-    const val CODE_RECV_ZIP_FILE:Byte = 33
-    const val CODE_CATCH_DEBUG_LOG:Byte = 5
-    const val CODE_SCREENSHOT:Byte = 6
-    const val CODE_UIA_DUMP:Byte = 10
-    const val CODE_CODE_SNIPPET:Byte = 22
-    const val CODE_FOREGROUND:Byte = 12
-}
+    private val RPC_TIMEOUT = 5_000L
+    private val RPC_PORT = 1140
+    private val logQueue: LinkedBlockingQueue<String> = LinkedBlockingQueue()
 
-fun OutputStream.sendString(content:String) {
-    val temp = content.toByteArray(Charset.forName("utf-8"))
-    this.write(intToByteArray(temp.size))
-    this.write(temp)
-    this.flush()
-}
+    @Volatile
+    private var deviceIp = "192.168.31.125"
 
-fun OutputStream.sendFile(file:File) {
-    val temp = file.readBytes()
-    this.write(intToByteArray(temp.size))
-    this.write(temp)
-    this.flush()
-}
+    private var mApiClient: HttpClient? = null
+    private var mApiSession: DefaultClientWebSocketSession? = null
 
-fun InputStream.readInt():Int {
-    var hasRead = 0
-    val cache = ByteArray(4)
-    while (hasRead != 4) {
-        hasRead += this.read(cache, hasRead, 4 - hasRead)
-    }
-    return byteArrayToInt(cache)
-}
+    private var mLogClient: HttpClient? = null
+    private var mLogSession: DefaultClientWebSocketSession? = null
+    private val isConnecting: AtomicBoolean = AtomicBoolean(false)
 
-fun InputStream.readBytesFixLength():ByteArray {
-    val length = readInt()
-    var hasRead = 0
-    if (length == 0) {
-        return ByteArray(0)
-    }
-    val cache = ByteArray(length)
-    while (hasRead != length) {
-        hasRead += this.read(cache, hasRead, length - hasRead)
-    }
-    return cache
-}
+    private val reqQueue: LinkedBlockingQueue<RpcDataModel> = LinkedBlockingQueue()
 
-fun InputStream.readString(length:Int):String {
-    var hasRead = 0
-    if (length == 0) {
-        return ""
-    }
-    val cache = ByteArray(length)
-    while (hasRead != length) {
-        hasRead += this.read(cache, hasRead, length - hasRead)
-    }
-    return String(cache)
-}
+    private val resQueue: ConcurrentSkipListMap<String, RpcDataModel> = ConcurrentSkipListMap<String, RpcDataModel>()
 
-fun InputStream.readStringFixLength():String {
-    return readString(readInt())
-}
-
-object EngineConnector {
-    private val LOGGER: Logger = Logger.getInstance(EngineConnector::class.java)
-
-    private var deviceIp = ""
-
-    public fun setDeviceIp(ip:String) {
-        deviceIp = ip;
-    }
-
-    public fun checkClientSocketOk():Boolean {
-        return try {
-            return Socket(deviceIp, 1140).isConnected
-        } catch (ignore:Throwable) {
-            return false;
-        }
-    }
-
-    private fun getClientConSocket():Socket {
-        val socket = Socket(deviceIp, 1140)
-        if (!socket.isConnected || socket.isOutputShutdown) {
-            throw RuntimeException("连接错误!")
-        }
-        return socket
-    }
-
-    public fun getClientLogSocket():Socket {
-        val socket = Socket(deviceIp, 1142)
-
-        if (!socket.isConnected || socket.isOutputShutdown) {
-            throw RuntimeException("连接错误!")
-        }
-        return socket
-    }
-
-    public fun notifyStartProject(projectName:String) {
-        val socket = getClientConSocket()
-        val socketSendStream = socket.getOutputStream()
-        val data = byteArrayOf(1)
-        socketSendStream.write(data)
-        Thread.sleep(300)
-        socketSendStream.write(projectName.toByteArray())
-        socket.close()
-        socketSendStream.close()
-    }
-
-    public fun notifyStopProject() {
-        val socket = getClientConSocket()
-        val socketSendStream = socket.getOutputStream()
-        val data = byteArrayOf(CmdCode.CODE_STOP)
-        socketSendStream.write(data)
-        socket.close()
-        socketSendStream.close()
-    }
-
-    public fun notifyCrawlLogcat() {
-        val socket = getClientConSocket()
-        val socketSendStream = socket.getOutputStream()
-        val data = byteArrayOf(CmdCode.CODE_CATCH_DEBUG_LOG)
-        socketSendStream.write(data)
-        socket.close()
-        socketSendStream.close()
-    }
-
-    /**
-     * 获取手机截图 保存在电脑一个固定的位置 再返回路径
-     */
-    public fun getScreenShot():String? {
-        val socket = getClientConSocket()
-
-        val socketSendStream = socket.getOutputStream()
-        val data = byteArrayOf(CmdCode.CODE_SCREENSHOT)
-        socketSendStream.write(data)
-        val socketRecvStream = socket.getInputStream()
-        val screenShot = socketRecvStream.readBytesFixLength()
-        if (screenShot.isEmpty()) {
-            return null
-        }
-        LOGGER.warn("getScreenShot Ok size=" + screenShot.size)
-        val folder = System.getProperty("user.home") + "/Desktop/Yyds.Auto"
-        with(File(folder)) {
-            if (!exists()) mkdirs()
-        }
-        val screenFile = File(folder, "截图.jpg")
-        screenFile.writeBytes(screenShot)
-        return screenFile.absolutePath
-    }
-
-    public fun getUiaDump():String? {
-        val socket = getClientConSocket()
-
-        val socketSendStream = socket.getOutputStream()
-        val data = byteArrayOf(CmdCode.CODE_UIA_DUMP)
-        socketSendStream.write(data)
-        val socketRecvStream = socket.getInputStream()
-        val dumpData = socketRecvStream.readBytesFixLength()
-        if (dumpData.isEmpty()) {
-            return null
-        }
-        val folder = System.getProperty("user.home") + "/Desktop/Yyds.Py"
-        with(File(folder)) {
-            if (!exists()) mkdirs()
-        }
-        val hierarchyFile = File(folder, "控件信息.xml")
-        hierarchyFile.writeBytes(dumpData)
-        return hierarchyFile.absolutePath
-    }
-
-    public fun getForeground():String {
-        val socket = getClientConSocket()
-        val socketSendStream = socket.getOutputStream()
-        val data = byteArrayOf(CmdCode.CODE_FOREGROUND)
-        socketSendStream.write(data)
-        val socketRecvStream = socket.getInputStream()
-        return socketRecvStream.readStringFixLength()
-    }
-
-    public fun runCodeSnippet(code:String) {
-        val socket = getClientConSocket()
-        val socketSendStream = socket.getOutputStream()
-        val data = byteArrayOf(CmdCode.CODE_CODE_SNIPPET)
-        socketSendStream.write(data)
-        socketSendStream.sendString(code)
-        socketSendStream.flush()
-    }
-
-    public fun sendEntireProject(tempZip:String, projectName: String, files: Array<File>) {
-        val socket = getClientConSocket()
-        val socketSendStream = socket.getOutputStream()
+    suspend fun DefaultClientWebSocketSession.pullRes() {
         try {
-            ZipUtility.zip(files.toList(), tempZip)
-            LOGGER.warn("文件压缩完毕: $tempZip")
-            // 插件开发-解压测试
-            // ZipUtility.unzip(tempZip, "C:/testPyUnZip")
-        } catch (e:Exception) {
-            LOGGER.error(e)
+            while (true) {
+                val response = receiveDeserialized<RpcDataModel>()
+                resQueue[response.uuid] = response
+                delay(200)
+                // LOGGER.warn("Receive: ${frame.frameType} fin:${frame.fin} data size: ${frame.data.size}")
+            }
+        } catch (e: Exception) {
+            LOGGER.warn("Error while fetch response ${e.message}", e)
         }
-        socketSendStream.write(byteArrayOf(CmdCode.CODE_RECV_ZIP_FILE))
-        socketSendStream.sendString(projectName)
-        socketSendStream.sendFile(File(tempZip))
-        // 删除临时压缩文件
-        File(tempZip).delete()
+    }
+
+    suspend fun DefaultClientWebSocketSession.postReq() {
+        try {
+            while (true) {
+                if (reqQueue.isEmpty()) {
+                    delay(1000)
+                    continue
+                }
+                val req = reqQueue.poll()
+                LOGGER.warn("Send to Device: $req")
+                sendSerialized(req)
+            }
+        } catch (e: Exception) {
+            LOGGER.warn("Error while fetch postReq ${e.message}")
+        }
+    }
+
+    fun engineTimeoutApiCallOrNull(request: RpcDataModel): RpcDataModel? {
+        ensureConnect()
+        reqQueue.add(request)
+        val start = System.currentTimeMillis()
+        while (!resQueue.containsKey(request.uuid)) {
+            if (System.currentTimeMillis() - start > RPC_TIMEOUT) {
+                return null
+            }
+        }
+        return resQueue.remove(request.uuid)
+    }
+
+    fun engineWaitApiCall(request: RpcDataModel): RpcDataModel {
+        ensureConnect()
+        reqQueue.add(request)
+        while (!resQueue.containsKey(request.uuid)) {
+            Thread.sleep(1000)
+        }
+        return resQueue.remove(request.uuid)!!
+    }
+
+    // 首次初始化 - 连接
+    private fun ensureConnect() {
+        if (mApiClient == null || !isConnecting.get()) {
+            thread {
+                startConnectApiJob()
+            }
+            thread {
+                startConnectLogJob()
+            }
+        }
+    }
+
+    private fun startConnectApiJob() {
+//        val handler = CoroutineExceptionHandler { _, e ->
+//            LOGGER.error("==========CoroutineExceptionHandler==========", e)
+//        }
+
+        mApiClient = HttpClient {
+            install(WebSockets) {
+                contentConverter = KotlinxWebsocketSerializationConverter(Cbor)
+            }
+            install(HttpTimeout) {
+                requestTimeoutMillis = 3600_000
+                connectTimeoutMillis = 3600_000
+                socketTimeoutMillis = 3600_000
+            }
+            install(Logging)
+        }
+
+        runBlocking {
+                isConnecting.set(true)
+                LOGGER.warn("S===")
+                val mApiSession = mApiClient!!.webSocketSession(
+                    method = HttpMethod.Get,
+                    host = deviceIp,
+                    port = RPC_PORT,
+                    path = "/api"
+                )
+                val j1 = launch(Dispatchers.IO) { mApiSession.pullRes() }
+                val j2 = launch(Dispatchers.IO) { mApiSession.postReq() }
+                j1.join()
+                j2.join()
+                LOGGER.warn("E===")
+                mApiSession.close()
+                LOGGER.warn("Disconnect from $deviceIp")
+                isConnecting.set(false)
+        }
+    }
+
+    fun reConnect(ip: String) {
+        runBlocking {
+            deviceIp = ip
+            mApiSession?.close(CloseReason(CloseReason.Codes.GOING_AWAY, "@-@"))
+            mApiClient?.close()
+            mApiClient = null
+            mApiSession = null
+
+            mLogClient?.close()
+            mLogSession?.close(CloseReason(CloseReason.Codes.GOING_AWAY, "@-@"))
+            mLogClient = null
+            mLogSession = null
+            ensureConnect()
+        }
+    }
+
+    fun disConnectAll() {
+        runBlocking {
+            mApiSession?.close()
+            mApiClient?.close()
+            mApiClient = null
+            mApiClient = null
+        }
+    }
+
+    fun setDeviceIp(ip: String) {
+        deviceIp = ip
+    }
+
+    fun getDeviceIp(): String {
+        return deviceIp
+    }
+
+    @OptIn(ExperimentalSerializationApi::class)
+    fun startConnectLogJob() {
+        val handler = CoroutineExceptionHandler { _, e ->
+            LOGGER.warn("==========CoroutineExceptionHandler==========", e)
+        }
+
+        mLogClient = HttpClient {
+            install(WebSockets)
+            install(HttpTimeout) {
+                requestTimeoutMillis = 3600_000
+                connectTimeoutMillis = 3600_000
+                socketTimeoutMillis = 3600_000
+            }
+            install(Logging)
+        }
+
+        runBlocking {
+            launch(handler) {
+                while (true) {
+                    LOGGER.warn("SL===")
+                    mLogClient!!.webSocket(
+                        method = HttpMethod.Get,
+                        host = deviceIp,
+                        port = 1140,
+                        path = "/log"
+                    ) {
+                        mLogSession = this
+                        launch(handler) {
+                            for (frame in incoming) {
+                                LOGGER.warn("receive log frame: ${frame.frameType} ${frame.fin}")
+                                when (frame) {
+                                    is Frame.Text -> {
+                                        val logText = frame.readText()
+                                        logQueue.offer(logText)
+                                        LOGGER.warn("(((( $logText")
+                                    }
+
+                                    else -> {
+                                    }
+                                }
+                            }
+                        }.join()
+                        LOGGER.warn("EL===")
+                        mLogClient!!.close()
+                    }
+                }
+            }
+        }
+        LOGGER.warn("startConnectLogJob gone")
+    }
+
+    fun nextLog(): String? {
+        return logQueue.poll()
+    }
+
+    fun logHasNext(): Boolean {
+        return !logQueue.isEmpty()
     }
 }

@@ -1,20 +1,21 @@
 package chen.yyds.py;
 
-import chen.yyds.py.impl.Const;
 import chen.yyds.py.impl.ProjectServer;
 import chen.yyds.py.impl.ProjectServerImpl;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.wm.ToolWindow;
+import com.intellij.ui.JBColor;
+import com.intellij.util.ui.JBFont;
 import impl.*;
 
 import javax.swing.*;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.SimpleAttributeSet;
+import javax.swing.text.StyleConstants;
+import javax.swing.text.StyleContext;
+import java.awt.*;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
-import java.io.InputStream;
-import java.net.ConnectException;
-import java.net.Socket;
-import java.net.SocketException;
-import java.nio.charset.StandardCharsets;
 
 
 public class LogForm implements MouseListener {
@@ -22,18 +23,20 @@ public class LogForm implements MouseListener {
             com.intellij.openapi.diagnostic.Logger.getInstance(LogForm.class);
 
     private JPanel panel1;
-    private JTextArea textArea;
     private JScrollPane scrollPanel;
+    private JTextPane logPanel;
     private final Project mProject;
+
+    ProjectServerImpl mProjectServer;
 
     private long lastClick = System.currentTimeMillis();
 
     @Override
     public void mouseClicked(MouseEvent e) {
         // 一秒內则算双击
-        if (System.currentTimeMillis() - lastClick < 1000) {
+        if (System.currentTimeMillis() - lastClick < 400) {
             LOGGER.warn("Double Click clear log!");
-            textArea.setText("");
+            logPanel.setText("");
         } else {
             lastClick = System.currentTimeMillis();
         }
@@ -70,7 +73,7 @@ public class LogForm implements MouseListener {
             SwingUtilities.invokeLater(new Runnable() {
                 @Override
                 public void run() {
-                    textArea.append(content);
+                    appendToPane(content);
                     scrollPanel.getVerticalScrollBar().setValue(scrollPanel.getVerticalScrollBar().getMaximum());
                 }
             });
@@ -81,7 +84,7 @@ public class LogForm implements MouseListener {
             SwingUtilities.invokeLater(new Runnable() {
                 @Override
                 public void run() {
-                    textArea.setText("");
+                    logPanel.setText("");
                 }
             });
         }
@@ -89,44 +92,40 @@ public class LogForm implements MouseListener {
 
     private void tryFetchLog() {
         try {
-            byte[] cache = new byte[1024];
-            ProjectServerImpl projectServer = (ProjectServerImpl) mProject.getService(ProjectServer.class);
-            String deviceIp = projectServer.getProjectProperties(Const.PROP_KEY_DEBUG_DEVICE_IP);
-            String projectName = projectServer.getProjectProperties(Const.PROP_KEY_PROJECT_NAME);
-            EngineConnector.INSTANCE.setDeviceIp(deviceIp);
-            callback.appendLog("当前调试工程:" + projectName + "\n");
-            callback.appendLog("当前调试设备IP地址:" + deviceIp + "\n");
-            callback.appendLog("正在努力尝试连接设备引擎并读取日志...\n");
-            EngineConnector.INSTANCE.notifyCrawlLogcat();
-            Socket logSocket = EngineConnector.INSTANCE.getClientLogSocket();
-            callback.appendLog("成功连接设备!现在开始抓取运行日志" + "\n");
-            InputStream stream = logSocket.getInputStream();
             while (true) {
-                try {
-                    int readSize = stream.read(cache);
-                    if (readSize < 0) {
-                        break;
-                    }
-                    String appendContent = new String(cache, 0, readSize, StandardCharsets.UTF_8);
-                    callback.appendLog(appendContent);
-                } catch (SocketException ignore) {
-                    callback.appendLog("设备断开!");
-                    break;
+                if (mProjectServer.logHasNext()) {
+                    callback.appendLog( mProjectServer.nextLog() + "\n");
                 }
             }
-        } catch (ConnectException ignore) {
-            callback.clear();
         } catch (Exception e) {
             LOGGER.error(e);
         }
     }
 
+    private void appendToPane(String msg) {
+        StyleContext sc = StyleContext.getDefaultStyleContext();
+        Color c;
+        if (msg.contains("python.stdout")) {
+            c = JBColor.CYAN;
+        } else {
+            c = JBColor.GRAY;
+        }
+        AttributeSet aset = sc.addAttribute(SimpleAttributeSet.EMPTY, StyleConstants.Foreground, c);
+        aset = sc.addAttribute(aset, StyleConstants.FontFamily, "Lucida Console");
+        aset = sc.addAttribute(aset, StyleConstants.Alignment, StyleConstants.ALIGN_JUSTIFIED);
+
+        int len = logPanel.getDocument().getLength();
+        logPanel.setCaretPosition(len);
+        logPanel.setCharacterAttributes(aset, false);
+        logPanel.replaceSelection(msg);
+    }
+
     public LogForm(Project project, ToolWindow toolWindow) {
         this.mProject = project;
+        this.mProjectServer = (ProjectServerImpl) mProject.getService(ProjectServer.class);
         new Thread(new Runnable() {
             @Override
             public void run() {
-                // ApkBuilder.INSTANCE.test();
                 while (true) {
                     tryFetchLog();
                     try {
@@ -137,7 +136,8 @@ public class LogForm implements MouseListener {
                 }
             }
         }).start();
-        this.textArea.addMouseListener(this);
+        this.logPanel.addMouseListener(this);
+        this.logPanel.setFont(JBFont.regular());
     }
 
     public JPanel getContent() {

@@ -2,13 +2,20 @@ plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "1.7.10"
     id("org.jetbrains.intellij") version "1.8.0"
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.8.0"
 }
 
 group = "chen.yyds"
-version = "1.11"
+version = "1.20"
 
 repositories {
     mavenCentral()
+    maven {
+        url = uri("https://maven.pkg.jetbrains.space/public/p/ktor/eap")
+    }
+    maven {
+        url = uri("https://maven.pkg.jetbrains.space/kotlin/p/kotlin/dev")
+    }
 }
 
 // Configure Gradle IntelliJ Plugin
@@ -21,42 +28,12 @@ intellij {
 }
 
 tasks {
-    // Set the JVM compatibility versionsclass ResOcr:
-    //    prob: float
-    //    text: str
-    //    x1: float
-    //    y1: float
-    //    x2: float
-    //    y2: float
-    //    x3: float
-    //    y3: float
-    //    x4: float
-    //    y4: float
-    //
-    //    def __init__(self, prob: float, text: str, x1: float, y1: float, x2: float, y2: float, x3: float, y3: float,
-    //                 x4: float, y4: float):
-    //        self.prob = prob
-    //        self.text = text
-    //        self.x1 = x1
-    //        self.y1 = y1
-    //        self.x2 = x2
-    //        self.y2 = y2
-    //        self.x3 = x3
-    //        self.y3 = y3
-    //        self.x4 = x4
-    //        self.y4 = y4
-    //
-    //    def __repr__(self):
-    //        return '{{ prob={},text="{}",x1={},y1={},x2={},y2={},x3={},y3={},x4={},y4={} }}'.format(self.prob, self.text,
-    //                                                                                                self.x1, self.y1,
-    //                                                                                                self.x2, self.y2,
-    //                                                                                                self.x3, self.y3,
-    //                                                                                                self.x4, self.y4)
     withType<JavaCompile> {
         sourceCompatibility = "11"
         targetCompatibility = "11"
         options.encoding = "UTF-8"
     }
+
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
         kotlinOptions.jvmTarget = "11"
     }
@@ -75,4 +52,53 @@ tasks {
     publishPlugin {
         token.set(System.getenv("PUBLISH_TOKEN"))
     }
+}
+
+buildscript {
+    repositories {
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+        maven {
+            url = uri("https://plugins.gradle.org/m2/")
+        }
+    }
+    dependencies {
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0")
+    }
+    dependencies {
+        classpath("org.jetbrains.intellij.plugins:gradle-intellij-plugin:1.11.0")
+    }
+}
+
+configurations.all{
+    resolutionStrategy {
+        // 修改 gradle不自动处理版本冲突
+        // failOnVersionConflict()
+        // preferProjectModules()
+        force("org.slf4j:slf4j-api:1.7.20")
+        // cacheChangingModulesFor(0, "seconds")
+    }
+}
+
+val ktorVersion = "2.2.2"
+dependencies {
+    implementation("io.ktor:ktor-client-core:$ktorVersion") {
+        exclude(group="org.slf4j")
+    }
+    implementation("io.ktor:ktor-client-cio:$ktorVersion")  {
+        exclude(group="org.slf4j")
+    }
+    implementation("io.ktor:ktor-client-websockets-jvm:$ktorVersion") {
+        exclude(group="org.slf4j")
+    }
+    implementation("io.ktor:ktor-client-logging:$ktorVersion") {
+        exclude(group="org.slf4j")
+    }
+    implementation("io.ktor:ktor-serialization-kotlinx-cbor:$ktorVersion")  {
+        exclude(group="org.slf4j")
+    }
+    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")  {
+        exclude(group="org.slf4j")
+    }
+
 }

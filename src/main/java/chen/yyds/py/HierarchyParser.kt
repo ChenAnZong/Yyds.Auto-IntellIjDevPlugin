@@ -79,7 +79,7 @@ object HierarchyParser {
 
     fun parse(path:String, treeNode:DefaultMutableTreeNode):DefaultMutableTreeNode {
         val factory = DocumentBuilderFactory.newInstance()
-        val builder = factory.newDocumentBuilder();
+        val builder = factory.newDocumentBuilder()
         val doc = builder.parse(File(path))
         var rootNode:Node = doc.documentElement.firstChild
         while (rootNode.nodeType != Node.ELEMENT_NODE) {

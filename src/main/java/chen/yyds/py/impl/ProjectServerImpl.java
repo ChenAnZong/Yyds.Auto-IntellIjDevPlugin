@@ -1,9 +1,8 @@
 package chen.yyds.py.impl;
 
-import com.intellij.notification.*;
+import chen.yyds.py.Notifyer;
+import com.intellij.openapi.Disposable;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.ui.MessageType;
-import impl.EngineConnector;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -12,38 +11,35 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.Properties;
 import java.util.function.Predicate;
 
-public class ProjectServerImpl {
+public class ProjectServerImpl implements Disposable {
     private static final com.intellij.openapi.diagnostic.Logger LOGGER =
             com.intellij.openapi.diagnostic.Logger.getInstance(ProjectServerImpl.class);
 
     private final Project project;
 
-    public static void showNotification(String text) {
-        NotificationGroupManager.getInstance()
-                .getNotificationGroup("Yyds.Py.Noti")
-                .createNotification(text, NotificationType.INFORMATION)
-                .notify(null);
-    }
-
     public ProjectServerImpl(Project project) {
         this.project = project;
+        Properties properties = loadProjectProperties();
+        String debugDeviceIp = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
+        EngineImplement.INSTANCE.setDeviceIp(debugDeviceIp);
     }
 
     public Properties loadProjectProperties() {
         try {
-            File configFile = Paths.get(project.getBasePath(), "project.config").toFile();
+            File configFile = Paths.get(Objects.requireNonNull(project.getBasePath()), "project.config").toFile();
             FileInputStream fs = new FileInputStream(configFile);
             Properties properties = new Properties();
             properties.load(fs);
             return properties;
         } catch (FileNotFoundException e) {
-            showNotification("错误:配置文件不存在");
+            Notifyer.notifyError("错误:配置文件不存在");
             throw new RuntimeException("配置文件不存在");
         } catch (IOException e) {
-            showNotification("读取项目配置文件失败");
+            Notifyer.notifyError("读取项目配置文件失败");
             throw new RuntimeException("读取项目配置文件失败");
         }
     }
@@ -53,60 +49,40 @@ public class ProjectServerImpl {
     }
 
     public String getScreenShot() {
-        Properties properties = loadProjectProperties();
-        String debugDeviceIp = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
-        EngineConnector.INSTANCE.setDeviceIp(debugDeviceIp);
-        return EngineConnector.INSTANCE.getScreenShot();
+        return EngineImplement.INSTANCE.getScreenShot();
     }
 
     public String getUiaDump() {
-        Properties properties = loadProjectProperties();
-        String debugDeviceIp = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
-        EngineConnector.INSTANCE.setDeviceIp(debugDeviceIp);
-        return EngineConnector.INSTANCE.getUiaDump();
+        return EngineImplement.INSTANCE.getUiaDump();
     }
 
     public String getForeground() {
-        Properties properties = loadProjectProperties();
-        String debugDeviceIp = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
-        EngineConnector.INSTANCE.setDeviceIp(debugDeviceIp);
-        return EngineConnector.INSTANCE.getForeground();
+        return EngineImplement.INSTANCE.getForeground();
     }
 
     public void runCodeSnippet(String code) {
-        Properties properties = loadProjectProperties();
-        String debugDeviceIp = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
-        EngineConnector.INSTANCE.setDeviceIp(debugDeviceIp);
-        EngineConnector.INSTANCE.runCodeSnippet(code);
+        new Thread(() -> {
+            EngineImplement.INSTANCE.runCodeSnippet(code);
+        }).start();
     }
 
     public void startProject() {
-        Properties properties = loadProjectProperties();
-        String debugDeviceIp = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
-        String projectName = properties.getProperty(Const.PROP_KEY_PROJECT_NAME);
-        showNotification(debugDeviceIp + " | StartProject:" + projectName);
-        EngineConnector.INSTANCE.setDeviceIp(debugDeviceIp);
-        EngineConnector.INSTANCE.notifyStartProject(projectName);
+        new Thread(() -> {
+                Properties properties = loadProjectProperties();
+                String projectName = properties.getProperty(Const.PROP_KEY_PROJECT_NAME);
+                EngineImplement.INSTANCE.notifyStartProject(projectName);
+        }).start();
     }
 
     public void stopProject() {
-        Properties properties = loadProjectProperties();
-        String debugDeviceIp = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
-        String projectName = properties.getProperty(Const.PROP_KEY_PROJECT_NAME);
-        showNotification(debugDeviceIp + " | StopProject");
-        EngineConnector.INSTANCE.setDeviceIp(debugDeviceIp);
-        EngineConnector.INSTANCE.notifyStopProject();
+        EngineImplement.INSTANCE.notifyStopProject();
     }
 
     public File[] getProjectFile() {
         return Arrays.stream(new File(project.getBasePath()).listFiles()).filter(new Predicate<File>() {
             @Override
             public boolean test(File file) {
-                if (file.getName().startsWith(".") || file.getName().contains("yyp.zip")) {
-                    return false;
-                } else {
-                    return true;
-                }
+                return !file.getName().startsWith(".") && !file.getName().contains("yyp.zip");
             }
         }).toArray(File[]::new);
     }
@@ -118,8 +94,8 @@ public class ProjectServerImpl {
         try {
             String zipFileName = String.format("/%s_%s.yyp.zip", projectName, projectVersion);
             ZipUtility.zip(Arrays.asList(getProjectFile().clone()), project.getBasePath().concat(zipFileName));
-            LOGGER.warn("Zip Ok: $tempZip");
-            showNotification("打包成功 " + zipFileName);
+            LOGGER.warn("Zip Finish:$tempZip");
+            Notifyer.notifyInfo("打包成功 " + zipFileName);
         } catch (Exception e) {
             LOGGER.error(e);
         }
@@ -127,31 +103,44 @@ public class ProjectServerImpl {
 
     public void sendProject() {
         try {
-            Properties properties = loadProjectProperties();
-            String debugDeviceIp = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
-            String projectName = properties.getProperty(Const.PROP_KEY_PROJECT_NAME);
-            showNotification(debugDeviceIp + " | 推送工程:" + projectName);
-            LOGGER.warn("全部工程文件:" +  Arrays.toString(new File(project.getBasePath()).list()));
-            EngineConnector.INSTANCE.setDeviceIp(debugDeviceIp);
-            EngineConnector.INSTANCE.sendEntireProject(project.getBasePath().concat("/.local.zip"), projectName, getProjectFile());
+            new Thread(()-> {
+                Properties properties = loadProjectProperties();
+                String projectName = properties.getProperty(Const.PROP_KEY_PROJECT_NAME);
+                LOGGER.warn("All Project files:" +  Arrays.toString(new File(Objects.requireNonNull(project.getBasePath())).list()));
+                EngineImplement.INSTANCE.sendEntireProject(project.getBasePath().concat("/.local.zip"), projectName, getProjectFile());
+            }).start();
         } catch (Exception exception) {
             exception.printStackTrace();
         }
     }
 
-    public boolean isClientConnectOk() {
+    public void reConnect() {
         Properties properties = loadProjectProperties();
-        String debugDeviceIp = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
+        String ip = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
+        EngineImplement.INSTANCE.reConnect(ip);
+    }
+
+    public boolean logHasNext() {
+        return EngineImplement.INSTANCE.logHasNext();
+    }
+    public String nextLog() {
+        return EngineImplement.INSTANCE.nextLog();
+    }
+
+    public boolean click(int x, int y) {
+        return EngineImplement.INSTANCE.click(x, y);
+    }
+
+    public boolean isClientConnectOk() {
         try {
-            InetAddress address = InetAddress.getByName(debugDeviceIp);
-            boolean reachable = address.isReachable(1500);
-            if (!reachable) {
-                return false;
-            }
-            EngineConnector.INSTANCE.setDeviceIp(debugDeviceIp);
-            return EngineConnector.INSTANCE.checkClientSocketOk();
+            InetAddress address = InetAddress.getByName(EngineImplement.INSTANCE.getDeviceIp());
+            return !address.isReachable(1500);
         } catch (Exception e) {
-            return false;
+            return true;
         }
+    }
+    @Override
+    public void dispose() {
+        EngineImplement.INSTANCE.disConnectAll();
     }
 }

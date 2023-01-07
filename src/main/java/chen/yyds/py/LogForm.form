@@ -12,7 +12,7 @@
         <properties/>
         <border type="none"/>
         <children>
-          <component id="c0bec" class="javax.swing.JTextArea" binding="textArea">
+          <component id="6b94c" class="javax.swing.JTextPane" binding="logPanel">
             <constraints/>
             <properties/>
           </component>

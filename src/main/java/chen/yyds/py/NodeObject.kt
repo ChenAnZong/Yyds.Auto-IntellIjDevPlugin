@@ -18,7 +18,7 @@ data class Bounds(val boundsString: String) {
         Point(rx, ry)
     }
 
-    public fun isWidthHeightEqual(w:Int, h:Int):Boolean = w == width && h == height
+    fun isWidthHeightEqual(w:Int, h:Int):Boolean = w == width && h == height
 
     override fun toString(): String {
         return "$p1x,$p1y $p2x,$p2y $width,$height"

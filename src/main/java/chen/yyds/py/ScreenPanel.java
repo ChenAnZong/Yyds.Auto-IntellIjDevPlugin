@@ -1,8 +1,5 @@
 package chen.yyds.py;
 
-import org.apache.log4j.Level;
-import org.jdesktop.swingx.treetable.DefaultMutableTreeTableNode;
-
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EtchedBorder;
@@ -26,10 +23,17 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
     BufferedImage currentImage;
     BufferedImage subRealImage;
     Rectangle realRectangle = new Rectangle();
+
+
+    // 回调到父窗口的事件
     ImageToolForm.OnScreenRectSelectedEvent selectedCallBack;
     ImageToolForm.OnUiSelectedEvent onUiSelectedCallback;
+
+    ImageToolForm.OnScreenDoubleClickEvent onScreenDoubleClickEvent;
+
     long lastClickTime;
     double scaleRatio = 0;
+    boolean shouldSidRectWhenMouseMove = false;
     Stroke dashed = new BasicStroke(1, BasicStroke.CAP_SQUARE, BasicStroke.JOIN_ROUND,
             0, new float[]{3, 2}, 0);
     Graphics2D g2d;
@@ -94,6 +98,8 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
             ImageIO.write(subRealImage, "jpg", imageFile);
         } catch (Exception ignore) {}
     }
+
+    private long lastDrawScreen = 0;
     public void setScreenSize(int w, int h) {
         if (getGraphics() != null) {
             g2d = (Graphics2D) getGraphics().create();
@@ -105,8 +111,13 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
         } else {
             if (scaleRatio > 0) {
                 this.sh = h;
-                this.sw = (int)Math.round(Math.floorDiv(this.sh * currentImage.getWidth(), currentImage.getHeight()));
+                this.sw = Math.round(Math.floorDiv(this.sh * currentImage.getWidth(), currentImage.getHeight()));
                 setSize(this.sw, this.sh);
+                // 画慢一点 有点卡
+                if (System.currentTimeMillis() - lastDrawScreen > 1500) {
+                    this.drawScreen();
+                    lastDrawScreen = System.currentTimeMillis();
+                }
             }
         }
 
@@ -193,16 +204,15 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
         if (cur - lastClickTime < 350) {
             lastClickTime = 0;
             LOGGER.warn("Double Click, load image!!");
+            int realX = (int)Math.round(e.getX()/scaleRatio);
+            int realY = (int)Math.round(e.getY()/scaleRatio);
+            if (onScreenDoubleClickEvent != null) {
+                onScreenDoubleClickEvent.onDoubleClick(realX, realY);
+            }
         } else {
             lastClickTime = cur;
         }
-
-        // 点击尝试选定控件信息！
-        LOGGER.warn("Click--------------------");
         drawUiDumpRect(e, null);
-        // 待选状态 +
-        return;
-
     }
 
     @Override
@@ -243,15 +253,32 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
             // 缩放显示
             selectedCallBack.onSelected(zoomImage(this.subRealImage,130, 130), desc);
             LOGGER.warn("draw realRectangle: " + realRectangle);
+            shouldSidRectWhenMouseMove = false;
         }
         rectStartPoint.x = 0;
         rectStartPoint.y = 0;
         LOGGER.warn("mouseReleased");
     }
 
+    public void onMouseMoveShowSidRect(MouseEvent e) {
+        if (selectedCallBack != null) {
+            Rectangle edgeRectangle = new Rectangle((int)Math.round(e.getX()/scaleRatio), (int)Math.round(e.getY()/scaleRatio), (int)Math.round(10/scaleRatio), (int)Math.round(10/scaleRatio));
+            LOGGER.warn("==========Show Edge:......"  + scaleRatio + "  edgeRectangle:" + edgeRectangle + " size:" + Math.round(10/scaleRatio));
+            // 展示周边图像
+            int w2 = Math.floorDiv(edgeRectangle.width, 2);
+            int h2 = Math.floorDiv(edgeRectangle.height,2);
+            this.subRealImage = currentImage.getSubimage(edgeRectangle.x - w2, edgeRectangle.y - h2  , w2, h2);
+            String desc = String.format("当前坐标:(%s, %s)", edgeRectangle.x, edgeRectangle.y);
+            // 缩放显示
+            selectedCallBack.onSelected(zoomImage(this.subRealImage,130, 130), desc);
+            LOGGER.warn("draw realRectangle: " + realRectangle);
+        }
+    }
+
     @Override
     public void mouseEntered(MouseEvent e) {
         setCursor(new Cursor(Cursor.CROSSHAIR_CURSOR));
+        shouldSidRectWhenMouseMove = true;
     }
 
     @Override
@@ -264,7 +291,7 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
 
     @Override
     public void mouseDragged(MouseEvent e) {
-        if (currentImage != null) return;
+        if (currentImage == null) return;
         if (rectStartPoint.y == 0 && rectStartPoint.x == 0) {
             return;
         }
@@ -272,23 +299,18 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
         rectEndPoint.y = e.getY();
         dragCount++;
         if (dragCount > 3)   this.repaint();
-
-        if (selectedCallBack != null) {
-            Rectangle edgeRectangle = new Rectangle((int)Math.round(e.getX()/scaleRatio), (int)Math.round(e.getY()/scaleRatio), (int)Math.round(10/scaleRatio), (int)Math.round(10/scaleRatio));
-            LOGGER.warn("==========Show Edge:......"  + scaleRatio + "  edgeRectangle:" + edgeRectangle + " size:" + Math.round(10/scaleRatio));
-            // 展示周边图像
-            this.subRealImage = currentImage.getSubimage(edgeRectangle.x - Math.floorDiv(edgeRectangle.width, 2), edgeRectangle.y - Math.floorDiv(edgeRectangle.height, 2)  , edgeRectangle.width, edgeRectangle.height);
-            String desc = String.format("当前坐标:(%s, %s)", edgeRectangle.x, edgeRectangle.y);
-            // 缩放显示
-            selectedCallBack.onSelected(zoomImage(this.subRealImage,130, 130), desc);
-            LOGGER.warn("draw realRectangle: " + realRectangle);
-        }
-
+        onMouseMoveShowSidRect(e);
         LOGGER.warn("mouseDragged y=" + rectStartPoint.getY());
     }
 
     @Override
     public void mouseMoved(MouseEvent e) {
+        if (currentImage == null) return;
+        try {
+            if (shouldSidRectWhenMouseMove) {
+                onMouseMoveShowSidRect(e);
+            }
+        } catch (Exception ignore) {}
     }
 
     @Override 

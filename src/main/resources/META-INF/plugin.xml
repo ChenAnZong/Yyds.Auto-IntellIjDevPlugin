@@ -2,37 +2,6 @@
 <idea-plugin>
     <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
     <id>yyds.auto.devplugin</id>
-    class ResOcr:
-    prob: float
-    text: str
-    x1: float
-    y1: float
-    x2: float
-    y2: float
-    x3: float
-    y3: float
-    x4: float
-    y4: float
-
-    def __init__(self, prob: float, text: str, x1: float, y1: float, x2: float, y2: float, x3: float, y3: float,
-    x4: float, y4: float):
-    self.prob = prob
-    self.text = text
-    self.x1 = x1
-    self.y1 = y1
-    self.x2 = x2
-    self.y2 = y2
-    self.x3 = x3
-    self.y3 = y3
-    self.x4 = x4
-    self.y4 = y4
-
-    def __repr__(self):
-    return '{{ prob={},text="{}",x1={},y1={},x2={},y2={},x3={},y3={},x4={},y4={} }}'.format(self.prob, self.text,
-    self.x1, self.y1,
-    self.x2, self.y2,
-    self.x3, self.y3,
-    self.x4, self.y4)
     <!-- Public plugin name should be written in Title Case.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-name -->
     <name>Yyds.Auto_Android_Dev_Plugin</name>
@@ -46,6 +15,7 @@
     <description>
          Yyds.Auto是一个更人性化更具有生产力的自动化软件，不依赖无障碍，内置Python函数实现如点击，滑动，截图，图片识别, busybox等功能, 并且使用为手机端极致优化的高性能神经网络的ncnn作为ai引擎, 内置前沿yolo与paddle ocr模型, 智能触手可及!
          官方网站:https://yydsxx.com
+         微信公众号:宁思致远
     </description>
 
     <!-- Product and plugin compatibility requirements.
@@ -59,18 +29,18 @@
                            displayType="BALLOON"
                            />
         <!-- Add your extensions here -->
-        <toolWindow id="Yyds.Auto" anchor="bottom" factoryClass="chen.yyds.py.LogWindowFactory" icon="YyIcons.PYTHON" doNotActivateOnStart="true"/>
+        <toolWindow id="运行日志" anchor="left" factoryClass="chen.yyds.py.LogWindowFactory" icon="YyIcons.PYTHON" doNotActivateOnStart="true"/>
         <toolWindow id="开发助手" anchor="right"  factoryClass="chen.yyds.py.ImageToolWindowFactory" doNotActivateOnStart="true"/>
 
 
         <projectService serviceInterface="chen.yyds.py.impl.ProjectServer" serviceImplementation="chen.yyds.py.impl.ProjectServerImpl"/>
 
-        <completion.contributor
-                implementationClass="chen.yyds.py.code.YydsAutoCompletionContributor"
-                factoryClass="com.intellij.openapi.extensions.ExtensionFactory"
-                factoryArgument=""
-                language="Py"
-        />
+<!--        <completion.contributor-->
+<!--                implementationClass="chen.yyds.py.code.YydsAutoCompletionContributor"-->
+<!--                factoryClass="com.intellij.openapi.extensions.ExtensionFactory"-->
+<!--                factoryArgument=""-->
+<!--                language="Py"-->
+<!--        />-->
 
     </extensions>
 
@@ -79,35 +49,40 @@
         <group id="YydsDevGroup" text="Yyds.Auto"  popup="true">
             <add-to-group group-id="MainMenu" anchor="before" relative-to-action="BuildMenu"/>
 
-            <action id="id_push_run_project" class="chen.yyds.py.action.ActionPushRunProject" text="推送并运行" icon="AllIcons.Actions.RunAll">
+            <action id="id_push_run_project" class="chen.yyds.py.action.ProjectActions" text="推送并运行" icon="AllIcons.Actions.RunAll">
                 <keyboard-shortcut first-keystroke="control alt 1" keymap="$default"/>
             </action>
 
-            <action id="id_run_project" class="chen.yyds.py.action.ActionStartTestProject" text="运行工程" icon="AllIcons.Actions.Restart">
+            <action id="id_run_project" class="chen.yyds.py.action.ProjectActions" text="运行工程" icon="AllIcons.Actions.Restart">
             </action>
 
-            <action id="id_stop_project" class="chen.yyds.py.action.ActionStopProject" text="停止工程" icon="YyIcons.STOP">
+            <action id="id_stop_project" class="chen.yyds.py.action.ProjectActions" text="停止工程" icon="YyIcons.STOP">
                 <keyboard-shortcut first-keystroke="control alt 2" keymap="$default"/>
             </action>
 
-            <action id="id_push_project" class="chen.yyds.py.action.ActionPushProject" text="推送工程" icon="YyIcons.PUSH">
+            <action id="id_push_project" class="chen.yyds.py.action.ProjectActions" text="推送工程" icon="YyIcons.PUSH">
             </action>
 
-            <action id="id_zip_project" class="chen.yyds.py.action.ActionZipProject" text="打包工程" icon="YyIcons.ZIP">
+            <action id="id_zip_project" class="chen.yyds.py.action.ProjectActions" text="打包工程" icon="YyIcons.ZIP">
+            </action>
+
+            <action id="id_device_reconnect" class="chen.yyds.py.action.ProjectActions" text="设备重连" icon="AllIcons.Actions.Refresh">
             </action>
         </group>
 
-        <action id="id_yyds_project_push_run" class="chen.yyds.py.action.ActionPushRunProject"
+        <action id="id_yyds_project_push_run" class="chen.yyds.py.action.ProjectActions"
                 text="发送工程到设备并运行Yyds.Auto工程" description="Action description" icon="AllIcons.Actions.RunAll">
             <add-to-group group-id="ToolbarRunGroup" anchor="first" />
         </action>
 
-        <action id="id_start_code_snippet" class="chen.yyds.py.action.ActionRunCodeSnippet" text="[Yyds.Auto调试] 运行选中代码" icon="YyIcons.RUN">
+        <action id="id_start_code_snippet" class="chen.yyds.py.action.ProjectActions" text="[Yyds.Auto调试] 运行选中代码" icon="YyIcons.RUN">
             <add-to-group group-id="EditorPopupMenu" anchor="first"/>
         </action>
 
-        <action id="id_start_code_file" class="chen.yyds.py.action.ActionRunPyFile" text="[Yyds.Auto调试] 运行当前文件" icon="YyIcons.RUN">
+        <action id="id_start_code_file" class="chen.yyds.py.action.ProjectActions" text="[Yyds.Auto调试] 运行当前文件" icon="YyIcons.RUN">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="id_start_code_snippet"/>
         </action>
     </actions>
+
+
 </idea-plugin>
