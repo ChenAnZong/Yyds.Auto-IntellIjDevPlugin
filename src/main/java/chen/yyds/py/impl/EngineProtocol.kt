@@ -36,7 +36,6 @@ object RPC_MAP_KEY {
 }
 
 
-
 @Serializable
 data class RpcDataModel(
     val uuid:String = UUID.randomUUID().toString(),

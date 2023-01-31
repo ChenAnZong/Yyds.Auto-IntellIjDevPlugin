@@ -23,7 +23,7 @@ repositories {
 intellij {
     version.set("2021.3.3")
     type.set("PC") // Target IDE Platform
-
+    intellij.updateSinceUntilBuild.set(false)
     plugins.set(listOf(/* Plugin Dependencies */))
 }
 
@@ -40,7 +40,6 @@ tasks {
 
     patchPluginXml {
         sinceBuild.set("213")
-        untilBuild.set("223.*")
     }
 
     signPlugin {

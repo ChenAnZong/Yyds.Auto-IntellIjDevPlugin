@@ -14,7 +14,7 @@ public class LogWindowFactory implements ToolWindowFactory {
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
         LogForm lf = new LogForm(project, toolWindow);
         ContentFactory contentFactory = ContentFactory.SERVICE.getInstance();
-        Content content = contentFactory.createContent(lf.getContent(), "运行日志", false);
+        Content content = contentFactory.createContent(lf.getContent(), "", false);
         toolWindow.getContentManager().addContent(content);
     }
 }

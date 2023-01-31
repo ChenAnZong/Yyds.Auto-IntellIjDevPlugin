@@ -220,13 +220,12 @@ abstract class EngineConnector {
                                 }
                             }
                         }.join()
-                        LOGGER.warn("EL===")
                         mLogClient!!.close()
                     }
                 }
             }
         }
-        LOGGER.warn("startConnectLogJob gone")
+        LOGGER.warn("bye /log")
     }
 
     fun nextLog(): String? {

@@ -252,7 +252,7 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
             String desc = String.format("左上角: %d,%d | 图像大小 %d x %d", realRectangle.x, realRectangle.y, realRectangle.width, realRectangle.height);
             // 缩放显示
             selectedCallBack.onSelected(zoomImage(this.subRealImage,130, 130), desc);
-            LOGGER.warn("draw realRectangle: " + realRectangle);
+            // LOGGER.warn("draw realRectangle: " + realRectangle);
             shouldSidRectWhenMouseMove = false;
         }
         rectStartPoint.x = 0;
@@ -263,7 +263,8 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
     public void onMouseMoveShowSidRect(MouseEvent e) {
         if (selectedCallBack != null) {
             Rectangle edgeRectangle = new Rectangle((int)Math.round(e.getX()/scaleRatio), (int)Math.round(e.getY()/scaleRatio), (int)Math.round(10/scaleRatio), (int)Math.round(10/scaleRatio));
-            LOGGER.warn("==========Show Edge:......"  + scaleRatio + "  edgeRectangle:" + edgeRectangle + " size:" + Math.round(10/scaleRatio));
+            // LOGGER.warn("==========Show Edge:......"  + scaleRatio + "  edgeRectangle:" + edgeRectangle + " size:" + Math.round(10/scaleRatio));
+
             // 展示周边图像
             int w2 = Math.floorDiv(edgeRectangle.width, 2);
             int h2 = Math.floorDiv(edgeRectangle.height,2);
@@ -271,7 +272,7 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
             String desc = String.format("当前坐标:(%s, %s)", edgeRectangle.x, edgeRectangle.y);
             // 缩放显示
             selectedCallBack.onSelected(zoomImage(this.subRealImage,130, 130), desc);
-            LOGGER.warn("draw realRectangle: " + realRectangle);
+            // LOGGER.warn("draw realRectangle: " + realRectangle);
         }
     }
 
