@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "chen.yyds"
-version = "1.21"
+version = "1.31"
 
 repositories {
     mavenCentral()
@@ -69,7 +69,7 @@ buildscript {
     }
 }
 
-configurations.all{
+configurations.all {
     resolutionStrategy {
         // 修改 gradle不自动处理版本冲突
         // failOnVersionConflict()
@@ -80,6 +80,7 @@ configurations.all{
 }
 
 val ktorVersion = "2.2.2"
+
 dependencies {
     implementation("io.ktor:ktor-client-core:$ktorVersion") {
         exclude(group="org.slf4j")

@@ -1,7 +1,9 @@
 package impl
 
+import chen.yyds.py.Notifyer
 import chen.yyds.py.impl.RpcDataModel
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.wm.WindowManager
 import io.ktor.client.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.logging.*
@@ -12,7 +14,6 @@ import io.ktor.serialization.kotlinx.*
 import io.ktor.util.*
 import io.ktor.websocket.*
 import io.ktor.websocket.serialization.*
-import io.netty.util.Timeout
 import kotlinx.coroutines.*
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.cbor.Cbor
@@ -20,6 +21,8 @@ import java.util.*
 import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.collections.ArrayList
+import kotlin.collections.HashSet
 import kotlin.concurrent.thread
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -40,11 +43,14 @@ abstract class EngineConnector {
 
     private var mLogClient: HttpClient? = null
     private var mLogSession: DefaultClientWebSocketSession? = null
-    private val isConnecting: AtomicBoolean = AtomicBoolean(false)
+    @JvmField
+    public val isConnecting: AtomicBoolean = AtomicBoolean(false)
 
     private val reqQueue: LinkedBlockingQueue<RpcDataModel> = LinkedBlockingQueue()
 
     private val resQueue: ConcurrentSkipListMap<String, RpcDataModel> = ConcurrentSkipListMap<String, RpcDataModel>()
+
+    private val jobs:HashSet<Job> = HashSet()
 
     suspend fun DefaultClientWebSocketSession.pullRes() {
         try {
@@ -127,7 +133,7 @@ abstract class EngineConnector {
 
         runBlocking {
                 isConnecting.set(true)
-                LOGGER.warn("S===")
+                LOGGER.warn("Api C START >>>")
                 val mApiSession = mApiClient!!.webSocketSession(
                     method = HttpMethod.Get,
                     host = deviceIp,
@@ -136,37 +142,37 @@ abstract class EngineConnector {
                 )
                 val j1 = launch(Dispatchers.IO) { mApiSession.pullRes() }
                 val j2 = launch(Dispatchers.IO) { mApiSession.postReq() }
-                j1.join()
-                j2.join()
-                LOGGER.warn("E===")
+                jobs.add(j1)
+                jobs.add(j2)
+                joinAll(j1, j2)
+                LOGGER.warn("Api C End")
                 mApiSession.close()
-                LOGGER.warn("Disconnect from $deviceIp")
                 isConnecting.set(false)
+                Notifyer.notifyError("开发助手", "已断开设备API链接!")
+        }
+    }
+
+    fun disConnect() {
+        runBlocking {
+            jobs.forEach { it.cancel("disConnect() Manually!") }
+            jobs.clear()
+
+            isConnecting.set(false)
+
+            mApiSession?.close(CloseReason(CloseReason.Codes.GOING_AWAY, "@-@"))
+            mApiClient?.close()
+
+            mLogClient?.close()
+            mLogSession?.close(CloseReason(CloseReason.Codes.GOING_AWAY, "@-@"))
+            LOGGER.warn("disConnect()")
         }
     }
 
     fun reConnect(ip: String) {
         runBlocking {
             deviceIp = ip
-            mApiSession?.close(CloseReason(CloseReason.Codes.GOING_AWAY, "@-@"))
-            mApiClient?.close()
-            mApiClient = null
-            mApiSession = null
-
-            mLogClient?.close()
-            mLogSession?.close(CloseReason(CloseReason.Codes.GOING_AWAY, "@-@"))
-            mLogClient = null
-            mLogSession = null
+            disConnect()
             ensureConnect()
-        }
-    }
-
-    fun disConnectAll() {
-        runBlocking {
-            mApiSession?.close()
-            mApiClient?.close()
-            mApiClient = null
-            mApiClient = null
         }
     }
 
@@ -196,36 +202,37 @@ abstract class EngineConnector {
 
         runBlocking {
             launch(handler) {
-                while (true) {
-                    LOGGER.warn("SL===")
-                    mLogClient!!.webSocket(
-                        method = HttpMethod.Get,
-                        host = deviceIp,
-                        port = 1140,
-                        path = "/log"
-                    ) {
-                        mLogSession = this
-                        launch(handler) {
-                            for (frame in incoming) {
-                                LOGGER.warn("receive log frame: ${frame.frameType} ${frame.fin}")
-                                when (frame) {
-                                    is Frame.Text -> {
-                                        val logText = frame.readText()
-                                        logQueue.offer(logText)
-                                        LOGGER.warn("(((( $logText")
-                                    }
+                LOGGER.warn("LOG C START >>>")
+                mLogClient!!.webSocket(
+                    method = HttpMethod.Get,
+                    host = deviceIp,
+                    port = 1140,
+                    path = "/log"
+                ) {
+                    mLogSession = this
+                    val logjob = launch(handler) {
+                        for (frame in incoming) {
+                            // LOGGER.warn("receive log frame: ${frame.frameType} ${frame.fin}")
+                            when (frame) {
+                                is Frame.Text -> {
+                                    val logText = frame.readText()
+                                    logQueue.offer(logText)
+                                    LOGGER.warn("(((( $logText")
+                                }
 
-                                    else -> {
-                                    }
+                                else -> {
                                 }
                             }
-                        }.join()
-                        mLogClient!!.close()
+                        }
                     }
+                    jobs.add(logjob)
+                    logjob.join()
                 }
             }
         }
-        LOGGER.warn("bye /log")
+        LOGGER.warn("LOG C END")
+        isConnecting.set(false)
+        Notifyer.notifyError("开发助手", "已断开设备日志链接!")
     }
 
     fun nextLog(): String? {

@@ -2,8 +2,15 @@ package chen.yyds.py;
 
 import chen.yyds.py.impl.ProjectServer;
 import chen.yyds.py.impl.ProjectServerImpl;
+import chen.yyds.py.status.YyConnectWidget;
+import com.intellij.openapi.Disposable;
+import com.intellij.openapi.application.Application;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.JBMenuItem;
+import com.intellij.openapi.ui.JBPopupMenu;
+import com.intellij.openapi.wm.StatusBar;
 import com.intellij.openapi.wm.ToolWindow;
+import com.intellij.openapi.wm.WindowManager;
 import com.intellij.ui.JBColor;
 import com.intellij.util.ui.JBFont;
 import impl.*;
@@ -14,6 +21,9 @@ import javax.swing.text.SimpleAttributeSet;
 import javax.swing.text.StyleConstants;
 import javax.swing.text.StyleContext;
 import java.awt.*;
+import java.awt.datatransfer.StringSelection;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 
@@ -21,25 +31,15 @@ import java.awt.event.MouseListener;
 public class LogForm implements MouseListener {
     private static final com.intellij.openapi.diagnostic.Logger LOGGER =
             com.intellij.openapi.diagnostic.Logger.getInstance(LogForm.class);
-
     private JPanel panel1;
     private JScrollPane scrollPanel;
     private JTextPane logPanel;
     private final Project mProject;
-
     ProjectServerImpl mProjectServer;
-
     private long lastClick = System.currentTimeMillis();
 
     @Override
     public void mouseClicked(MouseEvent e) {
-        // 一秒內则算双击
-        if (System.currentTimeMillis() - lastClick < 400) {
-            LOGGER.warn("Double Click clear log!");
-            logPanel.setText("");
-        } else {
-            lastClick = System.currentTimeMillis();
-        }
     }
 
     @Override
@@ -90,11 +90,20 @@ public class LogForm implements MouseListener {
         }
     };
 
+    private boolean isEndNewLine = false;
     private void tryFetchLog() {
         try {
             while (true) {
                 if (mProjectServer.logHasNext()) {
-                    callback.appendLog( mProjectServer.nextLog() + "\n");
+                    String log = mProjectServer.nextLog();
+                    log = log.replace("\n\n", "\n");
+                    if (!isEndNewLine && !log.isEmpty()) {
+                        log = "\n" + log;
+                    }
+                    if (log.endsWith("\n")) {
+                        isEndNewLine = true;
+                    }
+                    callback.appendLog(log);
                 }
             }
         } catch (Exception e) {
@@ -105,11 +114,17 @@ public class LogForm implements MouseListener {
     private void appendToPane(String msg) {
         StyleContext sc = StyleContext.getDefaultStyleContext();
         Color c;
-        if (msg.contains("python.stdout")) {
-            c = JBColor.CYAN;
+
+        if (msg.contains("err:") || msg.contains("Error") || msg.contains("Exception")) {
+            c = JBColor.RED;
+            msg = msg.substring(4);
+        } else if(msg.startsWith("out:")   ) {
+            c = JBColor.foreground();
+            msg = msg.substring(4);
         } else {
             c = JBColor.GRAY;
         }
+
         AttributeSet aset = sc.addAttribute(SimpleAttributeSet.EMPTY, StyleConstants.Foreground, c);
         aset = sc.addAttribute(aset, StyleConstants.FontFamily, "Lucida Console");
         aset = sc.addAttribute(aset, StyleConstants.Alignment, StyleConstants.ALIGN_JUSTIFIED);
@@ -138,6 +153,40 @@ public class LogForm implements MouseListener {
         }).start();
         this.logPanel.addMouseListener(this);
         this.logPanel.setFont(JBFont.regular());
+        JBPopupMenu popupMenu = new JBPopupMenu();
+        JBMenuItem menuItem = new JBMenuItem("清空日志");
+        popupMenu.add(menuItem);
+        menuItem.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                logPanel.setText("");
+            }
+        });
+
+        JBMenuItem copyItem = new JBMenuItem("复制全部");
+        popupMenu.add(copyItem);
+        copyItem.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Toolkit.getDefaultToolkit()
+                        .getSystemClipboard()
+                        .setContents(
+                                new StringSelection(logPanel.getText()),
+                                null
+                        );
+            }
+        });
+
+        this.logPanel.setComponentPopupMenu(popupMenu);
+
+        // 显示链接状态
+        StatusBar sb =  WindowManager.getInstance().getStatusBar(project);
+        sb.addWidget(new YyConnectWidget(project, mProjectServer), new Disposable(){
+            @Override
+            public void dispose() {
+
+            }
+        });
     }
 
     public JPanel getContent() {

@@ -4,11 +4,9 @@ import chen.yyds.py.Notifyer;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.project.Project;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
+import java.io.*;
 import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Objects;
@@ -31,7 +29,7 @@ public class ProjectServerImpl implements Disposable {
     public Properties loadProjectProperties() {
         try {
             File configFile = Paths.get(Objects.requireNonNull(project.getBasePath()), "project.config").toFile();
-            FileInputStream fs = new FileInputStream(configFile);
+            InputStreamReader fs = new InputStreamReader(new FileInputStream(configFile), StandardCharsets.UTF_8);
             Properties properties = new Properties();
             properties.load(fs);
             return properties;
@@ -67,11 +65,9 @@ public class ProjectServerImpl implements Disposable {
     }
 
     public void startProject() {
-        new Thread(() -> {
-                Properties properties = loadProjectProperties();
-                String projectName = properties.getProperty(Const.PROP_KEY_PROJECT_NAME);
-                EngineImplement.INSTANCE.notifyStartProject(projectName);
-        }).start();
+        Properties properties = loadProjectProperties();
+        String projectName = properties.getProperty(Const.PROP_KEY_PROJECT_NAME);
+        EngineImplement.INSTANCE.notifyStartProject(projectName);
     }
 
     public void stopProject() {
@@ -103,21 +99,28 @@ public class ProjectServerImpl implements Disposable {
 
     public void sendProject() {
         try {
-            new Thread(()-> {
-                Properties properties = loadProjectProperties();
-                String projectName = properties.getProperty(Const.PROP_KEY_PROJECT_NAME);
-                LOGGER.warn("All Project files:" +  Arrays.toString(new File(Objects.requireNonNull(project.getBasePath())).list()));
-                EngineImplement.INSTANCE.sendEntireProject(project.getBasePath().concat("/.local.zip"), projectName, getProjectFile());
-            }).start();
+            Properties properties = loadProjectProperties();
+            String projectName = properties.getProperty(Const.PROP_KEY_PROJECT_NAME);
+            LOGGER.warn("All Project files:" +  Arrays.toString(new File(Objects.requireNonNull(project.getBasePath())).list()));
+            EngineImplement.INSTANCE.sendEntireProject(project.getBasePath().concat("/.local.zip"), projectName, getProjectFile());
         } catch (Exception exception) {
             exception.printStackTrace();
         }
     }
 
+
     public void reConnect() {
         Properties properties = loadProjectProperties();
         String ip = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
         EngineImplement.INSTANCE.reConnect(ip);
+    }
+
+    public void disConnect() {
+        EngineImplement.INSTANCE.disConnect();
+    }
+
+    public void setConnectFailed() {
+        EngineImplement.INSTANCE.isConnecting.set(false);
     }
 
     public boolean logHasNext() {
@@ -131,16 +134,32 @@ public class ProjectServerImpl implements Disposable {
         return EngineImplement.INSTANCE.click(x, y);
     }
 
-    public boolean isClientConnectOk() {
+    public boolean isClientConnectFailed() {
         try {
             InetAddress address = InetAddress.getByName(EngineImplement.INSTANCE.getDeviceIp());
             return !address.isReachable(1500);
         } catch (Exception e) {
+            LOGGER.error(e);
             return true;
         }
     }
+
+    public String getCurDeviceIp() {
+        return EngineImplement.INSTANCE.getDeviceIp();
+    }
+
+    public String getConnectDescStatus() {
+        String status;
+        if (EngineImplement.INSTANCE.isConnecting.get()) {
+            status = " 连接到";
+        } else {
+            status = " 未连接";
+        }
+        return status + " " + EngineImplement.INSTANCE.getDeviceIp();
+    }
+
     @Override
     public void dispose() {
-        EngineImplement.INSTANCE.disConnectAll();
+        EngineImplement.INSTANCE.disConnect();
     }
 }

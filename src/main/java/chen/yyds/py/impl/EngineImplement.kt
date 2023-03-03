@@ -106,7 +106,7 @@ object EngineImplement : EngineConnector() {
             binData = File(tempZip).readBytes()
         ))
         val lost = System.currentTimeMillis() - st
-        Notifyer.notifyInfo("发送工程至设备完成:$projectName 工程大小: ${File(tempZip).length()/1024}Kb 耗时: ${lost}Ms")
+        Notifyer.notifyInfo("发送工程到设备完成:$projectName 工程大小: ${File(tempZip).length()/1024}Kb 耗时: ${lost}Ms")
         // 删除临时压缩文件
         File(tempZip).delete()
     }

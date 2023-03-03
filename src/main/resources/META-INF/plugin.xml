@@ -13,7 +13,7 @@
          Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
     <description>
-         Yyds.Auto是一个更人性化更具有生产力的自动化软件，不依赖无障碍，内置Python函数实现如点击，滑动，截图，图片识别, busybox等功能, 并且使用为手机端极致优化的高性能神经网络的ncnn作为ai引擎, 内置前沿yolo与paddle ocr模型, 智能触手可及!
+         Yyds.Auto是一个更人性化更具有生产力的自动化软件，不依赖无障碍，内置Python函数实现如点击，滑动，截图，图片识别, busybox等功能, 并且使用为手机端极致优化的高性能神经网络的ncnn作为ai引擎, 内置前沿yolo与paddle ocr模型, 释放先进生产力!
          官方网站:https://yydsxx.com
          微信公众号:宁思致远
     </description>
@@ -29,9 +29,8 @@
                            displayType="BALLOON"
                            />
         <!-- Add your extensions here -->
-        <toolWindow id="运行日志" anchor="left" factoryClass="chen.yyds.py.LogWindowFactory" icon="YyIcons.PYTHON" doNotActivateOnStart="true"/>
+        <toolWindow id="日志输出" anchor="right"  largeStripeAnchor="right" factoryClass="chen.yyds.py.LogWindowFactory" icon="YyIcons.PYTHON" doNotActivateOnStart="true"/>
         <toolWindow id="开发助手" anchor="right"  factoryClass="chen.yyds.py.ImageToolWindowFactory" doNotActivateOnStart="true"/>
-
 
         <projectService serviceInterface="chen.yyds.py.impl.ProjectServer" serviceImplementation="chen.yyds.py.impl.ProjectServerImpl"/>
 
@@ -66,7 +65,8 @@
             <action id="id_zip_project" class="chen.yyds.py.action.ProjectActions" text="打包工程" icon="YyIcons.ZIP">
             </action>
 
-            <action id="id_device_reconnect" class="chen.yyds.py.action.ProjectActions" text="设备重连" icon="AllIcons.Actions.Refresh">
+            <action id="id_device_reconnect" class="chen.yyds.py.action.ProjectActions" text="设备重连" icon="AllIcons.Actions.Refresh"/>
+            <action id="id_device_disconnect" class="chen.yyds.py.action.ProjectActions" text="断开连接" icon="AllIcons.Actions.Cancel">
             </action>
         </group>
 
@@ -75,13 +75,18 @@
             <add-to-group group-id="ToolbarRunGroup" anchor="first" />
         </action>
 
-        <action id="id_start_code_snippet" class="chen.yyds.py.action.ProjectActions" text="[Yyds.Auto调试] 运行选中代码" icon="YyIcons.RUN">
-            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+        <action id="id_push_start_project" class="chen.yyds.py.action.ProjectActions" text="发送并运行工程" icon="AllIcons.Actions.RunAll">
+            <add-to-group group-id="EditorPopupMenu" anchor="first" />
         </action>
 
-        <action id="id_start_code_file" class="chen.yyds.py.action.ProjectActions" text="[Yyds.Auto调试] 运行当前文件" icon="YyIcons.RUN">
+        <action id="id_start_code_snippet" class="chen.yyds.py.action.ProjectActions" text="运行选中代码" icon="YyIcons.RUN">
+            <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="id_push_start_project"/>
+        </action>
+
+        <action id="id_start_code_file" class="chen.yyds.py.action.ProjectActions" text="运行当前文件" icon="YyIcons.RUN">
             <add-to-group group-id="EditorPopupMenu" anchor="after" relative-to-action="id_start_code_snippet"/>
         </action>
+
     </actions>
 
 

@@ -269,7 +269,8 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
             int w2 = Math.floorDiv(edgeRectangle.width, 2);
             int h2 = Math.floorDiv(edgeRectangle.height,2);
             this.subRealImage = currentImage.getSubimage(edgeRectangle.x - w2, edgeRectangle.y - h2  , w2, h2);
-            String desc = String.format("当前坐标:(%s, %s)", edgeRectangle.x, edgeRectangle.y);
+            Color c = new Color(currentImage.getRGB(edgeRectangle.x, edgeRectangle.y));
+            String desc = String.format("当前坐标:(%s, %s) RGB:(%s, %s, %s)", edgeRectangle.x, edgeRectangle.y, c.getRed(), c.getGreen(), c.getBlue());
             // 缩放显示
             selectedCallBack.onSelected(zoomImage(this.subRealImage,130, 130), desc);
             // LOGGER.warn("draw realRectangle: " + realRectangle);

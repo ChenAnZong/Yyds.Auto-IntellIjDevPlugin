@@ -9,7 +9,10 @@ import javax.swing.tree.TreePath;
 
 import chen.yyds.py.impl.ProjectServer;
 import chen.yyds.py.impl.ProjectServerImpl;
+import com.intellij.openapi.fileChooser.FileChooserDescriptor;
+import com.intellij.openapi.fileChooser.ex.FileDrop;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.ui.JBColor;
 import com.intellij.ui.components.JBScrollPane;
@@ -19,8 +22,14 @@ import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.ui.JBFont;
 
 import java.awt.*;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.dnd.DnDConstants;
+import java.awt.dnd.DropTarget;
+import java.awt.dnd.DropTargetDropEvent;
 import java.awt.event.*;
+import java.io.File;
 import java.util.Collection;
+import java.util.List;
 
 public class ImageToolForm {
     private static final com.intellij.openapi.diagnostic.Logger LOGGER =
@@ -34,9 +43,13 @@ public class ImageToolForm {
     JTree uiDumpTree;
     JBScrollPane uiTreeScrollPanel;
 
+    String loadImageFromDisk;
+
     public boolean checkDeviceConnectFailed() {
-        if (projectServer == null || projectServer.isClientConnectOk()) {
-            Notifyer.notifyError("开发助手","连接调试设备失败!" + projectServer);
+        if (projectServer == null || projectServer.isClientConnectFailed()) {
+            Notifyer.notifyError("开发助手","连接调试设备失败! 设备无法连通!" + projectServer);
+            projectServer.setConnectFailed();
+            projectServer.disConnect();
             return true;
         } else {
             return false;
@@ -85,8 +98,8 @@ public class ImageToolForm {
         this.projectServer = (ProjectServerImpl)mProject.getService(ProjectServer.class);
         JLabel imgLabel =  new JLabel("", null, JLabel.LEFT);
         imgLabel.setSize(130, 130);
-        imgLabel.setBackground(JBColor.green);
-        imgLabel.setForeground(JBColor.green);
+        imgLabel.setBackground(JBColor.CYAN);
+        imgLabel.setForeground(JBColor.background());
         imgLabel.setBorder(new LineBorder(JBColor.green, 2));
 
         JButton buttonLoadScreen = new JButton("截图载入");
@@ -199,17 +212,17 @@ public class ImageToolForm {
                 buttonLoadScreen.setBounds(imgLabel.getWidth() + button.getWidth() + panelMargin*2 , underY, buttonWidth, 40);
 
                 if (uiDumpTree != null && uiTreeScrollPanel != null && uiMsgScrollPanel != null) {
-                    int uiLabelHeight = panel1.getHeight() - screenShotPanel.getHeight() - panelMargin;
                     // 测试控件列表排版
                     uiTreeScrollPanel.setBounds(screenShotPanel.getWidth() + panelMargin, panelMargin,
                             panel1.getWidth() - screenShotPanel.getWidth() - panelMargin,
-                            panel1.getHeight() - panelMargin - uiLabelHeight);
-                    uiDumpTree.setBounds(0, 0, uiTreeScrollPanel.getWidth() - 20, uiTreeScrollPanel.getHeight() - 20);
-                    
+                            (panel1.getHeight() - panelMargin*2)*3/5);
+                    uiDumpTree.setBounds(0, 0, uiTreeScrollPanel.getWidth() - 20, (panel1.getHeight() - panelMargin*2)*3/5);
+
+                    int uiMsgScrollPanelHeight = (panel1.getHeight() - panelMargin*2)*2/5;
                     // 控件信息显示在上面两个窗口下面
                     uiMsgScrollPanel.setBounds(uiTreeScrollPanel.getX(), uiTreeScrollPanel.getHeight() + panelMargin,
                             uiTreeScrollPanel.getWidth() ,
-                            uiLabelHeight);
+                            uiMsgScrollPanelHeight);
                     uiMsgLabel.setBounds(0, 0, uiMsgScrollPanel.getWidth(), uiMsgScrollPanel.getHeight());
                 }
             }
@@ -231,21 +244,51 @@ public class ImageToolForm {
         });
 
         button.setLocation(560, 100);
+
+        screenShotPanel.setDropTarget(new DropTarget() {
+            public synchronized void drop(DropTargetDropEvent evt) {
+                try {
+                    evt.acceptDrop(DnDConstants.ACTION_COPY);
+                    List<File> droppedFiles = (List<File>)
+                            evt.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
+                    loadImageFromDisk = droppedFiles.get(0).getAbsolutePath();
+                    for (ActionListener ac : buttonLoadScreen.getActionListeners()) {
+                        ac.actionPerformed(null);
+                    }
+                } catch (Exception ex) {
+                    LOGGER.error(ex.getMessage());
+                }
+            }
+        });
         buttonLoadScreen.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                String fetchScreenShot = fetchScreenShot();
-                if (fetchScreenShot != null) {
-                    screenShotPanel.resetDrawImage(fetchScreenShot);
+                String fetchScreenShot;
+                boolean isLoadFromDisk = false;
+                if (loadImageFromDisk != null) {
+                    fetchScreenShot = loadImageFromDisk;
+                    loadImageFromDisk = null;
+                    isLoadFromDisk = true;
                 } else {
-                    Notifyer.notifyError("开发助手", "截图失败，请联系开发者处理!");
-                    return;
+                    fetchScreenShot = fetchScreenShot();
                 }
+
+                try {
+                    if (fetchScreenShot != null) {
+                        screenShotPanel.resetDrawImage(fetchScreenShot);
+                    } else {
+                        Notifyer.notifyError("开发助手", "截图失败，无法获取图片");
+                        return;
+                    }
+                } catch (Exception resetError) {
+                    Notifyer.notifyError("开发助手", "截图错误，请联系开发者处理!\n" + resetError.getMessage());
+                }
+
                 // 要加载两次图片，尝试调整两次！
                 panel1.setSize(screenShotPanel.getWidth() + panelMargin, panel1.getHeight() + 1);
                 panel1.setSize(screenShotPanel.getWidth() + panelMargin, panel1.getHeight() - 1);
-                // 如果只加载截图，防止图片对不上控件，那就清空当前控件查找列表
-                if (e != null && uiDumpTree != null) {
+                // 如果只加载截图，防止图片对不上控件，那就清空当前控件查找列表 | 点击截图 or 或者拉取外部图片， 即非同时拉取截图与控件
+                if ((e != null || isLoadFromDisk) && uiDumpTree != null) {
                     uiDumpTree.removeAll();
                     HierarchyParser.INSTANCE.clearCacheList();
                 }
@@ -273,7 +316,7 @@ public class ImageToolForm {
                 String foreground = fetchForeground();
                 if (foreground != null) {
                     uiDumpTree = new Tree(HierarchyParser.INSTANCE.parse(uiXmlPath, new DefaultMutableTreeNode("<前台>" + foreground)));
-                    uiDumpTree.setForeground(JBColor.green);
+                    uiDumpTree.setForeground(JBColor.foreground());
                     uiDumpTree.setVisible(true);
                     uiDumpTree.setAutoscrolls(true);
                     uiDumpTree.addTreeSelectionListener(new TreeSelectionListener() {
@@ -310,7 +353,7 @@ public class ImageToolForm {
                 uiMsgLabel.setVisible(true);
                 uiMsgLabel.setLineWrap(true);
                 uiMsgLabel.setWrapStyleWord(true);
-                uiMsgLabel.setForeground(JBColor.green);
+                uiMsgLabel.setForeground(JBColor.foreground());
                 uiMsgLabel.addMouseListener(new MouseListener() {
                     @Override
                     public void mouseClicked(MouseEvent e) {
@@ -347,7 +390,6 @@ public class ImageToolForm {
                 LOGGER.warn("------------------------------------------------------------");
             }
         });
-
         button.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
