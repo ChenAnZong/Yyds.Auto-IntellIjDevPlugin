@@ -10,13 +10,14 @@ object EngineImplement : EngineConnector() {
         EngineImplement::class.java
     )
 
+
     fun notifyStartProject(projectName:String) {
         val st = System.currentTimeMillis()
         val res = engineWaitApiCall(RpcDataModel(
             method = RPC_METHOD.ENGINE_PROJECT_START,
             mapData = hashMapOf(RPC_MAP_KEY.ENGINE_START_PROJECT_NAME to projectName)))
         if (res.isSuccess()) {
-            Notifyer.notifyInfo("工程 $projectName  运行完毕 耗时${System.currentTimeMillis() - st} Ms")
+            Notifyer.notifyInfo("工程 $projectName  发送执行指令 耗时${System.currentTimeMillis() - st} Ms")
         }
     }
 
@@ -45,7 +46,7 @@ object EngineImplement : EngineConnector() {
     }
 
     fun getUiaDump():String? {
-        val folder = System.getProperty("user.home") + "/Desktop/Yyds.Py"
+        val folder = System.getProperty("user.home") + "/Desktop/Yyds.Auto"
         with(File(folder)) {
             if (!exists()) mkdirs()
         }

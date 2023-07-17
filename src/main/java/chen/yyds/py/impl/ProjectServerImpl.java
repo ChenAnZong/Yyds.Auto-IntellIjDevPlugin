@@ -17,6 +17,7 @@ public class ProjectServerImpl implements Disposable {
     private static final com.intellij.openapi.diagnostic.Logger LOGGER =
             com.intellij.openapi.diagnostic.Logger.getInstance(ProjectServerImpl.class);
 
+
     private final Project project;
 
     public ProjectServerImpl(Project project) {
@@ -24,6 +25,7 @@ public class ProjectServerImpl implements Disposable {
         Properties properties = loadProjectProperties();
         String debugDeviceIp = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
         EngineImplement.INSTANCE.setDeviceIp(debugDeviceIp);
+        EngineImplement.INSTANCE.ensureConnect();
     }
 
     public Properties loadProjectProperties() {
@@ -87,8 +89,14 @@ public class ProjectServerImpl implements Disposable {
         Properties properties = loadProjectProperties();
         String projectName = properties.getProperty(Const.PROP_KEY_PROJECT_NAME);
         String projectVersion = properties.getProperty(Const.PROP_KEY_PROJECT_VERSION);
+        boolean isWithVersion = Objects.equals(properties.getProperty(Const.PROP_KEY_WITH_VERSION), "true");
         try {
-            String zipFileName = String.format("/%s_%s.yyp.zip", projectName, projectVersion);
+            String zipFileName;
+            if (isWithVersion) {
+                zipFileName = String.format("/%s_%s.yyp.zip", projectName, projectVersion);
+            } else {
+                zipFileName = String.format("/%s.yyp.zip", projectName);
+            }
             ZipUtility.zip(Arrays.asList(getProjectFile().clone()), project.getBasePath().concat(zipFileName));
             LOGGER.warn("Zip Finish:$tempZip");
             Notifyer.notifyInfo("打包成功 " + zipFileName);
@@ -108,19 +116,16 @@ public class ProjectServerImpl implements Disposable {
         }
     }
 
-
     public void reConnect() {
         Properties properties = loadProjectProperties();
         String ip = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
+        EngineImplement.INSTANCE.setDeviceIp(ip);
+        LOGGER.warn("Refresh Ip:" + ip);
         EngineImplement.INSTANCE.reConnect(ip);
     }
 
     public void disConnect() {
         EngineImplement.INSTANCE.disConnect();
-    }
-
-    public void setConnectFailed() {
-        EngineImplement.INSTANCE.isConnecting.set(false);
     }
 
     public boolean logHasNext() {
@@ -150,10 +155,15 @@ public class ProjectServerImpl implements Disposable {
 
     public String getConnectDescStatus() {
         String status;
-        if (EngineImplement.INSTANCE.isConnecting.get()) {
-            status = " 连接到";
+        if (EngineImplement.INSTANCE.isApiConnecting.get()) {
+            status = " 控制通讯:连接";
         } else {
-            status = " 未连接";
+            status = " 控制通讯:断开";
+        }
+        if (EngineImplement.INSTANCE.isLogConnecting.get()) {
+            status += " 日志通讯:连接";
+        } else {
+            status += " 日志通讯:断开";
         }
         return status + " " + EngineImplement.INSTANCE.getDeviceIp();
     }

@@ -5,24 +5,33 @@ import javax.swing.border.LineBorder;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.event.TreeSelectionListener;
 import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeModel;
+import javax.swing.tree.TreeCellRenderer;
 import javax.swing.tree.TreePath;
 
+import chen.yyds.py.iface.OnScreenDoubleClickEvent;
+import chen.yyds.py.iface.OnScreenRectSelectedEvent;
+import chen.yyds.py.iface.OnUiSelectedEvent;
+
+import chen.yyds.py.iface.IOnSearchTreeEvent;
+import chen.yyds.py.impl.EngineImplement;
 import chen.yyds.py.impl.ProjectServer;
 import chen.yyds.py.impl.ProjectServerImpl;
-import com.intellij.openapi.fileChooser.FileChooserDescriptor;
-import com.intellij.openapi.fileChooser.ex.FileDrop;
+import chen.yyds.py.util.XmlEditKit;
+import chen.yyds.py.util.XmlFormatter;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.openapi.ui.JBMenuItem;
+import com.intellij.openapi.ui.JBPopupMenu;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.ui.JBColor;
+import com.intellij.ui.SearchTextField;
 import com.intellij.ui.components.JBScrollPane;
-import com.intellij.ui.components.JBTextArea;
 import com.intellij.ui.components.JBTextField;
-import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.ui.JBFont;
 
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
 import java.awt.dnd.DnDConstants;
 import java.awt.dnd.DropTarget;
 import java.awt.dnd.DropTargetDropEvent;
@@ -30,6 +39,7 @@ import java.awt.event.*;
 import java.io.File;
 import java.util.Collection;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class ImageToolForm {
     private static final com.intellij.openapi.diagnostic.Logger LOGGER =
@@ -38,50 +48,36 @@ public class ImageToolForm {
     ProjectServerImpl projectServer;
     int panelMargin = 10;
     // 三个控件相关
-    JBTextArea uiMsgLabel;
-    JBScrollPane uiMsgScrollPanel;
+    JTextPane uiMsgTextArea;
+
+    SearchTextField uiSearchField;
+
+    JBScrollPane uiMsgTextScrollPanel;
     JTree uiDumpTree;
+
     JBScrollPane uiTreeScrollPanel;
 
     String loadImageFromDisk;
 
-    public boolean checkDeviceConnectFailed() {
-        if (projectServer == null || projectServer.isClientConnectFailed()) {
-            Notifyer.notifyError("开发助手","连接调试设备失败! 设备无法连通!" + projectServer);
-            projectServer.setConnectFailed();
-            projectServer.disConnect();
-            return true;
-        } else {
-            return false;
-        }
-    }
+    IOnSearchTreeEvent onSearchTreeEvent;
+
 
     public String fetchScreenShot() {
-        if (checkDeviceConnectFailed()) return null;
+        // if (checkDeviceConnectFailed()) return null;
         return projectServer.getScreenShot();
     }
 
     public String fetchUiaDump() {
-        if (checkDeviceConnectFailed()) return null;
+        // if (checkDeviceConnectFailed()) return null;
         return projectServer.getUiaDump();
     }
 
     public String fetchForeground() {
-        if (checkDeviceConnectFailed()) return null;
+        // if (checkDeviceConnectFailed()) return null;
         return projectServer.getForeground();
     }
 
-    interface OnScreenDoubleClickEvent {
-        void onDoubleClick(int x, int y);
-    }
 
-    interface OnScreenRectSelectedEvent {
-        void onSelected(Image image, String desc);
-    }
-
-    interface OnUiSelectedEvent {
-        void onSelected(Collection<DefaultMutableTreeNode> nodes);
-    }
 
     public ImageToolForm(Project project, ToolWindow toolWindow) {
         this.mProject = project;
@@ -115,11 +111,11 @@ public class ImageToolForm {
         buttonLoadUiaDump.setSize(130, 40);
 
 
-        JButton button = new JButton("保存区域");
+        JButton saveAreaButton = new JButton("保存区域");
         //button.setBackground(new Color(69,73,74));
-        button.setForeground(JBColor.foreground());
-        button.setVisible(true);
-        button.setSize(130, 40);
+        saveAreaButton.setForeground(JBColor.foreground());
+        saveAreaButton.setVisible(true);
+        saveAreaButton.setSize(130, 40);
         // 图片选中裁剪回调
         OnScreenRectSelectedEvent onScreenRectSelectedEvent = new OnScreenRectSelectedEvent() {
             @Override
@@ -132,21 +128,29 @@ public class ImageToolForm {
             }
         };
         // 控件选中回调
-        OnUiSelectedEvent onUiSelectedEvent = new OnUiSelectedEvent() {
+       OnUiSelectedEvent onUiSelectedEvent = new OnUiSelectedEvent() {
             @Override
             public void onSelected(Collection<DefaultMutableTreeNode> nodes) {
-                    if (uiDumpTree == null) return;
+                    if (uiDumpTree == null || nodes.isEmpty()) return;
                     uiDumpTree.collapsePath(new TreePath(uiDumpTree.getModel().getRoot()));
-                    for (DefaultMutableTreeNode n:nodes) {
-                        uiDumpTree.setExpandsSelectedPaths(true);
-                        uiDumpTree.setScrollsOnExpand(true);
-                        TreePath tp = new TreePath(n.getPath());
-                        uiDumpTree.expandPath(tp);
-                        uiDumpTree.setSelectionPath(tp);
-                        uiDumpTree.invalidate();
-                        uiDumpTree.requestFocus();
-                        LOGGER.warn("OnUiSelectedEvent Select:" + nodes.size() + " Path:" + tp);
+                    // 最终会选中深度最深的控件
+                    int maxDepth = 0;
+                    int lastArea = 0;
+                    TreePath last = null;
+                    for (DefaultMutableTreeNode treeNode: nodes) {
+                        NodeObject node = (NodeObject) ((DefaultMutableTreeNode) treeNode).getUserObject();
+                        if (node.getDepth() >= maxDepth || node.getBounds().getHeight() * node.getBounds().getWidth() < lastArea) {
+                            uiDumpTree.setExpandsSelectedPaths(true);
+                            uiDumpTree.setScrollsOnExpand(true);
+                            TreePath tp = new TreePath(treeNode.getPath());
+                            uiDumpTree.expandPath(tp);
+                            LOGGER.warn("OnUiSelectedEvent Select:" + nodes.size() + " Path:" + tp);
+                            maxDepth = node.getDepth();
+                            last = tp;
+                            lastArea = node.getBounds().getHeight() * node.getBounds().getWidth();
+                        }
                     }
+                    if (last != null) uiDumpTree.setSelectionPath(last);
             }
         };
         ScreenPanel screenShotPanel = new ScreenPanel(300, 450, onScreenRectSelectedEvent, onUiSelectedEvent);
@@ -183,15 +187,16 @@ public class ImageToolForm {
         panel1.add(textField);
         panel1.add(buttonLoadScreen);
         panel1.add(buttonLoadUiaDump);
-        panel1.add(button);
+        panel1.add(saveAreaButton);
         panel1.addComponentListener(new ComponentListener() {
             int h = 0;
+            // 位置位置
             @Override
             public void componentResized(ComponentEvent e) {
                 LOGGER.warn("componentResized Resized w:" + toolWindow.getComponent().getWidth() + "  h:" + toolWindow.getComponent().getHeight() + " panel width:" + panel1.getWidth());
                 screenShotPanel.setScreenSize(panel1.getWidth(), panel1.getHeight() - 180);
 
-                LOGGER.warn("Screen  w:" + screenShotPanel.getWidth() + " " + screenShotPanel.getHeight());
+                LOGGER.warn("Screen  w:" + screenShotPanel.getWidth() + " h:" + screenShotPanel.getHeight());
                 this.h = panel1.getHeight();
 
                 int underY = panelMargin + screenShotPanel.getHeight();
@@ -207,23 +212,30 @@ public class ImageToolForm {
                 textField.setBounds(imgLabel.getWidth() + panelMargin + 10 , underY, imageRaminRightSpace - panelMargin ,30);
                 underY += textField.getHeight() + 5;
                 int buttonWidth = (imageRaminRightSpace - panelMargin) / 2;
-                button.setBounds(imgLabel.getWidth() + panelMargin * 2, underY, buttonWidth, 40);
-                buttonLoadUiaDump.setBounds(imgLabel.getWidth() + panelMargin * 2, underY + button.getHeight() + panelMargin, imageRaminRightSpace - panelMargin, 40);
-                buttonLoadScreen.setBounds(imgLabel.getWidth() + button.getWidth() + panelMargin*2 , underY, buttonWidth, 40);
+                saveAreaButton.setBounds(imgLabel.getWidth() + panelMargin * 2, underY, buttonWidth, 40);
+                buttonLoadUiaDump.setBounds(imgLabel.getWidth() + panelMargin * 2, underY + saveAreaButton.getHeight() + panelMargin, imageRaminRightSpace - panelMargin, 40);
+                buttonLoadScreen.setBounds(imgLabel.getWidth() + saveAreaButton.getWidth() + panelMargin*2 , underY, buttonWidth, 40);
 
-                if (uiDumpTree != null && uiTreeScrollPanel != null && uiMsgScrollPanel != null) {
+                if (uiDumpTree != null && uiTreeScrollPanel != null && uiMsgTextScrollPanel != null) {
                     // 测试控件列表排版
                     uiTreeScrollPanel.setBounds(screenShotPanel.getWidth() + panelMargin, panelMargin,
                             panel1.getWidth() - screenShotPanel.getWidth() - panelMargin,
                             (panel1.getHeight() - panelMargin*2)*3/5);
                     uiDumpTree.setBounds(0, 0, uiTreeScrollPanel.getWidth() - 20, (panel1.getHeight() - panelMargin*2)*3/5);
 
+                    // XML信息占用 2/5 的高度
                     int uiMsgScrollPanelHeight = (panel1.getHeight() - panelMargin*2)*2/5;
+
+                    // 搜索栏 XML 上面
+                    uiSearchField.setBounds(
+                            uiTreeScrollPanel.getX(), uiTreeScrollPanel.getHeight() + panelMargin,
+                            uiTreeScrollPanel.getWidth(), 30);
+
                     // 控件信息显示在上面两个窗口下面
-                    uiMsgScrollPanel.setBounds(uiTreeScrollPanel.getX(), uiTreeScrollPanel.getHeight() + panelMargin,
-                            uiTreeScrollPanel.getWidth() ,
-                            uiMsgScrollPanelHeight);
-                    uiMsgLabel.setBounds(0, 0, uiMsgScrollPanel.getWidth(), uiMsgScrollPanel.getHeight());
+                    uiMsgTextScrollPanel.setBounds(
+                            uiTreeScrollPanel.getX(), uiTreeScrollPanel.getHeight() + panelMargin + uiSearchField.getHeight(),
+                            uiTreeScrollPanel.getWidth(), uiMsgScrollPanelHeight - uiSearchField.getHeight());
+                    uiMsgTextArea.setBounds(0, 0, uiMsgTextScrollPanel.getWidth(), uiMsgTextScrollPanel.getHeight());
                 }
             }
 
@@ -243,7 +255,7 @@ public class ImageToolForm {
             }
         });
 
-        button.setLocation(560, 100);
+        saveAreaButton.setLocation(560, 100);
 
         screenShotPanel.setDropTarget(new DropTarget() {
             public synchronized void drop(DropTargetDropEvent evt) {
@@ -304,93 +316,169 @@ public class ImageToolForm {
 
                 if (uiTreeScrollPanel != null) {
                     panel1.remove(uiTreeScrollPanel);
-                    panel1.remove(uiMsgScrollPanel);
-                    panel1.remove(uiMsgLabel);
+                    panel1.remove(uiMsgTextScrollPanel);
+                    panel1.remove(uiMsgTextArea);
+                    panel1.remove(uiSearchField);
                 }
 
-                String uiXmlPath = fetchUiaDump();
-                if (uiXmlPath == null) {
-                    Notifyer.notifyError("开发助手","获取控件信息失败！请联系开发者解决");
-                    return;
-                }
-                String foreground = fetchForeground();
-                if (foreground != null) {
-                    uiDumpTree = new Tree(HierarchyParser.INSTANCE.parse(uiXmlPath, new DefaultMutableTreeNode("<前台>" + foreground)));
-                    uiDumpTree.setForeground(JBColor.foreground());
-                    uiDumpTree.setVisible(true);
-                    uiDumpTree.setAutoscrolls(true);
-                    uiDumpTree.addTreeSelectionListener(new TreeSelectionListener() {
-                        @Override
-                        public void valueChanged(TreeSelectionEvent e) {
-                            DefaultMutableTreeNode node = (DefaultMutableTreeNode) uiDumpTree.getLastSelectedPathComponent();
-                            if (node == null) return;
-                            if (node.getUserObject() instanceof NodeObject) {
-                                NodeObject selectedNode = (NodeObject) node.getUserObject();
-                                screenShotPanel.drawUiDumpRect(null, selectedNode);
-                                uiMsgLabel.setText(selectedNode.getInnerXml());
-                                System.out.println("Xuan Zhong le:" + node);
+                new Thread(()-> {
+                    String uiXmlPath = fetchUiaDump();
+                    if (uiXmlPath == null) {
+                        Notifyer.notifyError("开发助手","获取控件信息失败！请联系开发者解决");
+                        return;
+                    }
+                    String foreground = fetchForeground();
+
+                    SwingUtilities.invokeLater(()-> {
+                        if (foreground != null) {
+                            DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode("<前台>" + foreground);
+                            DefaultMutableTreeNode treeNode = HierarchyParser.INSTANCE.parse(uiXmlPath, rootNode);
+                            DefaultTreeModel myModel = new DefaultTreeModel(treeNode);
+                            uiDumpTree = new JTree(myModel);
+                            uiDumpTree.setForeground(JBColor.foreground());
+                            uiDumpTree.setVisible(true);
+                            uiDumpTree.setAutoscrolls(true);
+                            uiDumpTree.setCellRenderer(new NodeTreeCellRender());
+                            onSearchTreeEvent = new IOnSearchTreeEvent() {
+                                @Override
+                                public void search() {
+                                    myModel.nodeStructureChanged(treeNode);
+                                }
+                            };
+
+                            uiDumpTree.addTreeSelectionListener(new TreeSelectionListener() {
+                                @Override
+                                public void valueChanged(TreeSelectionEvent e) {
+                                    DefaultMutableTreeNode node = (DefaultMutableTreeNode) uiDumpTree.getLastSelectedPathComponent();
+                                    if (node == null) return;
+                                    if (node.getUserObject() instanceof NodeObject) {
+                                        NodeObject selectedNode = (NodeObject) node.getUserObject();
+                                        screenShotPanel.drawUiDumpRect(null, selectedNode);
+                                        uiMsgTextArea.setText(XmlFormatter.format(selectedNode.getInnerXml()));
+                                        System.out.println("Your Selected Node:" + node);
+                                    }
+                                }
+                            });
+                            // 抓取控件的时候同时触发截图操作
+                            for (ActionListener ac : buttonLoadScreen.getActionListeners()) {
+                                ac.actionPerformed(null);
                             }
                         }
+
+                        uiTreeScrollPanel = new JBScrollPane(uiDumpTree);
+                        // treePanel.setLayout(null);
+                        uiTreeScrollPanel.createVerticalScrollBar();
+                        uiTreeScrollPanel.createVerticalScrollBar();
+                        uiTreeScrollPanel.setForeground(JBColor.white);
+                        uiTreeScrollPanel.setBackground(JBColor.white);
+                        panel1.add(uiTreeScrollPanel);
+
+                        // 控件XML搜索
+                        uiSearchField = new SearchTextField();
+                        panel1.add(uiSearchField);
+                        uiSearchField.setToolTipText("输入关键词并按下回车键进行搜索");
+                        uiSearchField.setSize(100, 30);
+                        uiSearchField.setEnabled(true);
+                        uiSearchField.setVisible(true);
+                        uiSearchField.addKeyboardListener(new KeyListener() {
+                            @Override
+                            public void keyTyped(KeyEvent e) {
+                            }
+                            @Override
+                            public void keyPressed(KeyEvent e) {
+                            }
+                            @Override
+                            public void keyReleased(KeyEvent e) {
+                                TreeCellRenderer cellRenderer =  uiDumpTree.getCellRenderer();
+                                // 按下回车键开始搜索
+                                if (cellRenderer != null && onSearchTreeEvent != null && e.getKeyCode() == 10) {
+                                    ((NodeTreeCellRender) cellRenderer).setFilterString(uiSearchField.getText());
+                                    LOGGER.warn("keyFilterSet:" + uiSearchField.getText());
+                                    onSearchTreeEvent.search();
+                                    screenShotPanel.drawUiSearchNode(uiSearchField.getText());
+                                }
+                            }
+                        });
+
+                        // 控件XML显示对照
+                        uiMsgTextArea = new JTextPane();
+                        uiMsgTextArea.setText("@_@");
+                        uiMsgTextArea.setFont(JBFont.regular());
+                        uiMsgTextArea.setEditable(false);
+                        uiMsgTextArea.setVisible(true);
+                        uiMsgTextArea.setEditorKitForContentType("text/xml", new XmlEditKit());
+                        uiMsgTextArea.setContentType("text/xml");
+                        uiMsgTextArea.setForeground(JBColor.foreground());
+                        uiMsgTextArea.addMouseListener(new MouseListener() {
+                            @Override
+                            public void mouseClicked(MouseEvent e) {
+
+                            }
+
+                            @Override
+                            public void mousePressed(MouseEvent e) {
+
+                            }
+
+                            @Override
+                            public void mouseReleased(MouseEvent e) {
+
+                            }
+
+                            @Override
+                            public void mouseEntered(MouseEvent e) {
+                                uiMsgTextArea.setCursor(new Cursor(Cursor.TEXT_CURSOR));
+                            }
+
+                            @Override
+                            public void mouseExited(MouseEvent e) {
+
+                            }
+                        });
+                        JBPopupMenu popupMenu = new JBPopupMenu();
+                        JBMenuItem copyAllItem = new JBMenuItem("复制全部");
+                        popupMenu.add(copyAllItem);
+
+                        copyAllItem.addActionListener(new ActionListener() {
+                            @Override
+                            public void actionPerformed(ActionEvent e) {
+                                Toolkit.getDefaultToolkit()
+                                        .getSystemClipboard()
+                                        .setContents(
+                                                new StringSelection(uiMsgTextArea.getText()),
+                                                null
+                                        );
+                            }
+                        });
+                        JBMenuItem copySelectionItem = new JBMenuItem("复制选中");
+                        popupMenu.add(copySelectionItem);
+                        uiMsgTextArea.setComponentPopupMenu(popupMenu);
+                        copySelectionItem.addActionListener(new ActionListener() {
+                            @Override
+                            public void actionPerformed(ActionEvent e) {
+                                Toolkit.getDefaultToolkit()
+                                        .getSystemClipboard()
+                                        .setContents(
+                                                new StringSelection(uiMsgTextArea.getSelectedText()),
+                                                null
+                                        );
+                            }
+                        });
+
+                        uiMsgTextScrollPanel = new JBScrollPane(uiMsgTextArea);
+                        // treePanel.setLayout(null);
+                        uiMsgTextScrollPanel.createVerticalScrollBar();
+                        uiMsgTextScrollPanel.createVerticalScrollBar();
+                        uiMsgTextScrollPanel.setForeground(JBColor.white);
+                        uiMsgTextScrollPanel.setBackground(JBColor.white);
+                        panel1.add(uiMsgTextScrollPanel);
+                        LOGGER.warn("------------------------------------------------------------");
                     });
-                    // 抓取控件的时候同时触发截图操作
-                    for (ActionListener ac : buttonLoadScreen.getActionListeners()) {
-                        ac.actionPerformed(null);
-                    }
-                }
 
-                uiTreeScrollPanel = new JBScrollPane(uiDumpTree);
-                // treePanel.setLayout(null);
-                uiTreeScrollPanel.createVerticalScrollBar();
-                uiTreeScrollPanel.createVerticalScrollBar();
-                uiTreeScrollPanel.setForeground(JBColor.white);
-                uiTreeScrollPanel.setBackground(JBColor.white);
-                panel1.add(uiTreeScrollPanel);
-
-                uiMsgLabel = new JBTextArea();
-                uiMsgLabel.setText("@_@");
-                uiMsgLabel.setFont(JBFont.regular());
-                uiMsgLabel.setEditable(false);
-                uiMsgLabel.setVisible(true);
-                uiMsgLabel.setLineWrap(true);
-                uiMsgLabel.setWrapStyleWord(true);
-                uiMsgLabel.setForeground(JBColor.foreground());
-                uiMsgLabel.addMouseListener(new MouseListener() {
-                    @Override
-                    public void mouseClicked(MouseEvent e) {
-
-                    }
-
-                    @Override
-                    public void mousePressed(MouseEvent e) {
-
-                    }
-
-                    @Override
-                    public void mouseReleased(MouseEvent e) {
-
-                    }
-
-                    @Override
-                    public void mouseEntered(MouseEvent e) {
-                        uiMsgLabel.setCursor(new Cursor(Cursor.TEXT_CURSOR));
-                    }
-
-                    @Override
-                    public void mouseExited(MouseEvent e) {
-
-                    }
-                });
-                uiMsgScrollPanel = new JBScrollPane(uiMsgLabel);
-                // treePanel.setLayout(null);
-                uiMsgScrollPanel.createVerticalScrollBar();
-                uiMsgScrollPanel.createVerticalScrollBar();
-                uiMsgScrollPanel.setForeground(JBColor.white);
-                uiMsgScrollPanel.setBackground(JBColor.white);
-                panel1.add(uiMsgScrollPanel);
-                LOGGER.warn("------------------------------------------------------------");
+                }).start();
             }
         });
-        button.addActionListener(new ActionListener() {
+        saveAreaButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
                 String tag = textField.getText().replace(" ", "");

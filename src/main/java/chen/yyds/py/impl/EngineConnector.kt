@@ -2,9 +2,11 @@ package impl
 
 import chen.yyds.py.Notifyer
 import chen.yyds.py.impl.RpcDataModel
+import com.google.common.util.concurrent.Atomics
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.wm.WindowManager
 import io.ktor.client.*
+import io.ktor.client.engine.java.*
 import io.ktor.client.plugins.*
 import io.ktor.client.plugins.logging.*
 import io.ktor.client.plugins.websocket.*
@@ -21,6 +23,7 @@ import java.util.*
 import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.collections.ArrayList
 import kotlin.collections.HashSet
 import kotlin.concurrent.thread
@@ -31,20 +34,22 @@ abstract class EngineConnector {
         EngineConnector::class.java
     )
 
-    private val RPC_TIMEOUT = 5_000L
-    private val RPC_PORT = 1140
+    private val RPC_TIMEOUT = 12_000L
+    private val RPC_PORT = 61140
     private val logQueue: LinkedBlockingQueue<String> = LinkedBlockingQueue()
 
-    @Volatile
-    private var deviceIp = "192.168.31.125"
+    private val deviceIp:AtomicReference<String> = AtomicReference("192.168.1.2");
 
     private var mApiClient: HttpClient? = null
-    private var mApiSession: DefaultClientWebSocketSession? = null
-
     private var mLogClient: HttpClient? = null
+
+    private var mApiSession: DefaultClientWebSocketSession? = null
     private var mLogSession: DefaultClientWebSocketSession? = null
+
     @JvmField
-    public val isConnecting: AtomicBoolean = AtomicBoolean(false)
+    public val isApiConnecting: AtomicBoolean = AtomicBoolean(false)
+    @JvmField
+    public val isLogConnecting: AtomicBoolean = AtomicBoolean(false)
 
     private val reqQueue: LinkedBlockingQueue<RpcDataModel> = LinkedBlockingQueue()
 
@@ -58,7 +63,8 @@ abstract class EngineConnector {
                 val response = receiveDeserialized<RpcDataModel>()
                 resQueue[response.uuid] = response
                 delay(200)
-                // LOGGER.warn("Receive: ${frame.frameType} fin:${frame.fin} data size: ${frame.data.size}")
+                LOGGER.warn("Receive: ${response}")
+                addDebugLogToQueue("[插件调试输出]从远程设备收到:$response\n")
             }
         } catch (e: Exception) {
             LOGGER.warn("Error while fetch response ${e.message}", e)
@@ -82,7 +88,6 @@ abstract class EngineConnector {
     }
 
     fun engineTimeoutApiCallOrNull(request: RpcDataModel): RpcDataModel? {
-        ensureConnect()
         reqQueue.add(request)
         val start = System.currentTimeMillis()
         while (!resQueue.containsKey(request.uuid)) {
@@ -92,10 +97,13 @@ abstract class EngineConnector {
         }
         return resQueue.remove(request.uuid)
     }
+    fun addDebugLogToQueue(log: String) {
+        logQueue.offer("来自插件:" + log)
+    }
 
     fun engineWaitApiCall(request: RpcDataModel): RpcDataModel {
-        ensureConnect()
         reqQueue.add(request)
+        addDebugLogToQueue("[插件调试输出]发送到远程请求设备:$request")
         while (!resQueue.containsKey(request.uuid)) {
             Thread.sleep(1000)
         }
@@ -103,13 +111,22 @@ abstract class EngineConnector {
     }
 
     // 首次初始化 - 连接
-    private fun ensureConnect() {
-        if (mApiClient == null || !isConnecting.get()) {
-            thread {
-                startConnectApiJob()
-            }
-            thread {
-                startConnectLogJob()
+    public fun ensureConnect() {
+        thread {
+            while (true) {
+                if (!isApiConnecting.get()) {
+                    addDebugLogToQueue("[插件调试输出]控制断连, 正在重新连接 ${deviceIp}\n")
+                    thread {
+                        startConnectApiJob()
+                    }
+                }
+                if (!isLogConnecting.get()) {
+                    addDebugLogToQueue("[插件调试输出]日志断连, 正在重新连接 ${deviceIp}\n")
+                    thread {
+                        startConnectLogJob()
+                    }
+                }
+                Thread.sleep(10_000)
             }
         }
     }
@@ -119,7 +136,7 @@ abstract class EngineConnector {
 //            LOGGER.error("==========CoroutineExceptionHandler==========", e)
 //        }
 
-        mApiClient = HttpClient {
+        mApiClient = HttpClient(Java) {
             install(WebSockets) {
                 contentConverter = KotlinxWebsocketSerializationConverter(Cbor)
             }
@@ -132,11 +149,11 @@ abstract class EngineConnector {
         }
 
         runBlocking {
-                isConnecting.set(true)
+                isApiConnecting.set(true)
                 LOGGER.warn("Api C START >>>")
                 val mApiSession = mApiClient!!.webSocketSession(
                     method = HttpMethod.Get,
-                    host = deviceIp,
+                    host = deviceIp.get(),
                     port = RPC_PORT,
                     path = "/api"
                 )
@@ -147,9 +164,9 @@ abstract class EngineConnector {
                 joinAll(j1, j2)
                 LOGGER.warn("Api C End")
                 mApiSession.close()
-                isConnecting.set(false)
-                Notifyer.notifyError("开发助手", "已断开设备API链接!")
+                // Notifyer.notifyError("开发助手", "已断开设备API链接!")
         }
+        isApiConnecting.set(false)
     }
 
     fun disConnect() {
@@ -157,31 +174,31 @@ abstract class EngineConnector {
             jobs.forEach { it.cancel("disConnect() Manually!") }
             jobs.clear()
 
-            isConnecting.set(false)
-
             mApiSession?.close(CloseReason(CloseReason.Codes.GOING_AWAY, "@-@"))
             mApiClient?.close()
 
             mLogClient?.close()
             mLogSession?.close(CloseReason(CloseReason.Codes.GOING_AWAY, "@-@"))
+
+            isLogConnecting.set(false)
+            isApiConnecting.set(false)
             LOGGER.warn("disConnect()")
         }
     }
 
     fun reConnect(ip: String) {
         runBlocking {
-            deviceIp = ip
+            setDeviceIp(ip)
             disConnect()
-            ensureConnect()
         }
     }
 
     fun setDeviceIp(ip: String) {
-        deviceIp = ip
+        deviceIp.set(ip)
     }
 
     fun getDeviceIp(): String {
-        return deviceIp
+        return deviceIp.get()
     }
 
     @OptIn(ExperimentalSerializationApi::class)
@@ -190,7 +207,7 @@ abstract class EngineConnector {
             LOGGER.warn("==========CoroutineExceptionHandler==========", e)
         }
 
-        mLogClient = HttpClient {
+        mLogClient = HttpClient(Java) {
             install(WebSockets)
             install(HttpTimeout) {
                 requestTimeoutMillis = 3600_000
@@ -205,10 +222,11 @@ abstract class EngineConnector {
                 LOGGER.warn("LOG C START >>>")
                 mLogClient!!.webSocket(
                     method = HttpMethod.Get,
-                    host = deviceIp,
-                    port = 1140,
+                    host = deviceIp.get(),
+                    port = 61140,
                     path = "/log"
                 ) {
+                    isLogConnecting.set(true)
                     mLogSession = this
                     val logjob = launch(handler) {
                         for (frame in incoming) {
@@ -219,7 +237,6 @@ abstract class EngineConnector {
                                     logQueue.offer(logText)
                                     LOGGER.warn("(((( $logText")
                                 }
-
                                 else -> {
                                 }
                             }
@@ -230,9 +247,9 @@ abstract class EngineConnector {
                 }
             }
         }
+        isLogConnecting.set(false)
         LOGGER.warn("LOG C END")
-        isConnecting.set(false)
-        Notifyer.notifyError("开发助手", "已断开设备日志链接!")
+        // Notifyer.notifyError("开发助手", "已断开设备日志链接!")
     }
 
     fun nextLog(): String? {

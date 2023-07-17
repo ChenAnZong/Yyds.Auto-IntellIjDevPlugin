@@ -3,6 +3,7 @@ package chen.yyds.py;
 import chen.yyds.py.impl.ProjectServer;
 import chen.yyds.py.impl.ProjectServerImpl;
 import chen.yyds.py.status.YyConnectWidget;
+import com.esotericsoftware.minlog.Log;
 import com.intellij.openapi.Disposable;
 import com.intellij.openapi.application.Application;
 import com.intellij.openapi.project.Project;
@@ -73,8 +74,13 @@ public class LogForm implements MouseListener {
             SwingUtilities.invokeLater(new Runnable() {
                 @Override
                 public void run() {
-                    appendToPane(content);
-                    scrollPanel.getVerticalScrollBar().setValue(scrollPanel.getVerticalScrollBar().getMaximum());
+                    try {
+                        LOGGER.warn("#appendLog >>> " + content);
+                        appendToPane(content);
+                        scrollPanel.getVerticalScrollBar().setValue(scrollPanel.getVerticalScrollBar().getMaximum());
+                    } catch (Exception e) {
+                        LOGGER.error("#APPENDLOG ERROR", e);
+                    }
                 }
             });
         }
@@ -96,13 +102,14 @@ public class LogForm implements MouseListener {
             while (true) {
                 if (mProjectServer.logHasNext()) {
                     String log = mProjectServer.nextLog();
+                    if (log == null) {
+                        continue;
+                    }
                     log = log.replace("\n\n", "\n");
-                    if (!isEndNewLine && !log.isEmpty()) {
+                    if (!isEndNewLine && !log.isBlank()) {
                         log = "\n" + log;
                     }
-                    if (log.endsWith("\n")) {
-                        isEndNewLine = true;
-                    }
+                    isEndNewLine = log.endsWith("\n");
                     callback.appendLog(log);
                 }
             }
@@ -114,13 +121,20 @@ public class LogForm implements MouseListener {
     private void appendToPane(String msg) {
         StyleContext sc = StyleContext.getDefaultStyleContext();
         Color c;
-
-        if (msg.contains("err:") || msg.contains("Error") || msg.contains("Exception")) {
+        if (msg.contains("err:")) {
             c = JBColor.RED;
             msg = msg.substring(4);
-        } else if(msg.startsWith("out:")   ) {
+        } else if (msg.contains("Error") || msg.contains("Exception")) {
+            c = JBColor.RED;
+        } else if (msg.startsWith("out:")) {
             c = JBColor.foreground();
             msg = msg.substring(4);
+        } else if (msg.startsWith("\nout:")) {
+            c = JBColor.foreground();
+            msg = msg.substring(5);
+        } else if (msg.contains("来自插件:")) {
+            msg = msg.replaceFirst("来自插件:", "");
+            c = JBColor.blue;
         } else {
             c = JBColor.GRAY;
         }
@@ -165,6 +179,20 @@ public class LogForm implements MouseListener {
 
         JBMenuItem copyItem = new JBMenuItem("复制全部");
         popupMenu.add(copyItem);
+
+        JBMenuItem copySelectionItem = new JBMenuItem("复制选中");
+        popupMenu.add(copySelectionItem);
+        copySelectionItem.addActionListener(new ActionListener() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Toolkit.getDefaultToolkit()
+                        .getSystemClipboard()
+                        .setContents(
+                                new StringSelection(logPanel.getSelectedText()),
+                                null
+                        );
+            }
+        });
         copyItem.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {

@@ -48,8 +48,9 @@ data class NodeObject(
 
     val isVisible: Boolean,
     val boundsString: String,
-    val parentCount: Int, // xml depth
+    val parentCount: Int,
     val childCount: Int,
+    val depth:Int,
     val innerXml: String
 ) {
 
@@ -60,11 +61,14 @@ data class NodeObject(
             ""
         }
 
-        val descText = if (desc.isNotEmpty() && text.isNotEmpty()) {
+        var descText = if (desc.isNotEmpty() && desc != text) {
             "desc=$desc"
         } else {
             ""
         }
+
+        if (descText.length > 20) descText = descText.substring(0, 20).plus("...")
+
 
         val textText = if (text.isNotEmpty()) {
             "text=$text"
@@ -84,7 +88,7 @@ data class NodeObject(
             ""
         }
 
-        return "$indexText${bounds.width}x${bounds.height} $clickText${cls.substringAfterLast(".")} $idText $descText $textText"
+        return "$indexText${bounds.width}x${bounds.height} $clickText${cls.substringAfterLast(".")} $idText $descText $textText "
     }
 
     val bounds by lazy { Bounds(boundsString) }

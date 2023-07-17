@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "chen.yyds"
-version = "1.31"
+version = "1.49"
 
 repositories {
     mavenCentral()
@@ -79,13 +79,13 @@ configurations.all {
     }
 }
 
-val ktorVersion = "2.2.2"
+val ktorVersion = "2.3.0"
 
 dependencies {
     implementation("io.ktor:ktor-client-core:$ktorVersion") {
         exclude(group="org.slf4j")
     }
-    implementation("io.ktor:ktor-client-cio:$ktorVersion")  {
+    implementation("io.ktor:ktor-client-java:$ktorVersion")  {
         exclude(group="org.slf4j")
     }
     implementation("io.ktor:ktor-client-websockets-jvm:$ktorVersion") {

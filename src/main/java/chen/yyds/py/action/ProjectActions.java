@@ -34,11 +34,11 @@ public class ProjectActions extends AnAction {
         }
 
         // 注意有一个action不用连接设备，其它全部都需要
-        if (projectServer.isClientConnectFailed() && !Objects.requireNonNull(thisActionId).equals("id_zip_project")) {
-            Notifyer.notifyError(String.format("连接调试设备%s失败!", projectServer.getCurDeviceIp()));
-            projectServer.setConnectFailed();
-            return;
-        }
+        // if (projectServer.isClientConnectFailed() && !Objects.requireNonNull(thisActionId).equals("id_zip_project")) {
+        // Notifyer.notifyError(String.format("连接调试设备%s失败!", projectServer.getCurDeviceIp()));
+            // projectServer.setConnectFailed();
+        //    return;
+        //}
 
         switch (thisActionId) {
             case "id_device_reconnect":

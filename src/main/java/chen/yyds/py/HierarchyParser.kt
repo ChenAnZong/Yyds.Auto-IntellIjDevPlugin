@@ -20,7 +20,7 @@ object HierarchyParser {
         return lsSerializer.writeToString(node).replace("<?xml version=\"1.0\" encoding=\"UTF-16\"?>", "")
     }
 
-    fun parseNode(root:Node, treeNode:DefaultMutableTreeNode, nodeMap: HashMap<NodeObject, DefaultMutableTreeNode>) {
+    fun parseNode(root:Node, treeNode:DefaultMutableTreeNode, nodeMap: HashMap<NodeObject, DefaultMutableTreeNode>, depth:Int) {
         val ele = root as Element
         /**
         var parent = ele.parentNode
@@ -42,25 +42,27 @@ object HierarchyParser {
             ele.getAttribute("package"),
             ele.getAttribute("content-desc"),
 
-            ele.getAttribute("checkable").toBoolean(),
-            ele.getAttribute("checked").toBoolean(),
-            ele.getAttribute("clickable").toBoolean(),
-            ele.getAttribute("enabled").toBoolean(),
-            ele.getAttribute("focusable").toBoolean(),
+            ele.getAttribute("checkable") == "true",
+            ele.getAttribute("checked") == "true",
+            ele.getAttribute("clickable") == "true",
+            ele.getAttribute("enabled") == "true",
+            ele.getAttribute("focusable") == "true",
 
-            ele.getAttribute("focused").toBoolean(),
-            ele.getAttribute("scrollable").toBoolean(),
-            ele.getAttribute("long-clickable").toBoolean(),
-            ele.getAttribute("password").toBoolean(),
-            ele.getAttribute("selected").toBoolean(),
-            ele.getAttribute("visible-to-user").toBoolean(),
+            ele.getAttribute("focused") == "true",
+            ele.getAttribute("scrollable") == "true",
+            ele.getAttribute("long-clickable") == "true",
+            ele.getAttribute("password") == "true",
+            ele.getAttribute("selected") == "true",
+            ele.getAttribute("visible-to-user")== "true",
             ele.getAttribute("bounds"),
             try {
                 ele.getAttribute( "parent-count").toInt()
             } catch (e:Exception) { 0 },
+
             try {
                 ele.getAttribute( "child--count").toInt()
             } catch (e:Exception) { 0 },
+            depth,
             innerXml(root)
         )
 
@@ -72,7 +74,7 @@ object HierarchyParser {
         for (child_index in 0 until ele.childNodes.length) {
             val child = ele.childNodes.item(child_index)
             if (child.nodeType == Node.ELEMENT_NODE) {
-                parseNode(child, newNode, nodeMap)
+                parseNode(child, newNode, nodeMap, depth + 1)
             }
         }
     }
@@ -88,7 +90,7 @@ object HierarchyParser {
         }
         cacheListNodes.clear()
         System.out.println("Nodetype: " + rootNode.nodeType)
-        parseNode(rootNode, treeNode, cacheListNodes)
+        parseNode(rootNode, treeNode, cacheListNodes, 0)
         return treeNode
     }
 
@@ -96,11 +98,19 @@ object HierarchyParser {
         cacheListNodes.clear()
     }
 
+    fun allInRectContainString(key:String):Map<NodeObject, DefaultMutableTreeNode> {
+        if (cacheListNodes.isEmpty()) return emptyMap<NodeObject, DefaultMutableTreeNode>()
+
+        return cacheListNodes.filter {
+            it.key.toString().contains(key)
+        }
+    }
+
     fun allInRectExceptLayout(x:Int, y:Int):Map<NodeObject, DefaultMutableTreeNode> {
         if (cacheListNodes.isEmpty()) return emptyMap<NodeObject, DefaultMutableTreeNode>()
 
         return cacheListNodes.filter {
-            x > it.key.bounds.p1x && x < it.key.bounds.p2x && y > it.key.bounds.p1y && y < it.key.bounds.p2y
+            x > it.key.bounds.p1x && x < it.key.bounds.p2x && y > it.key.bounds.p1y && y < it.key.bounds.p2y && (it.key.isClickAble || it.key.isScrollable && it.key.bounds.width > 0 && it.key.bounds.height > 0)
         }
     }
 }

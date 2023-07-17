@@ -1,5 +1,9 @@
 package chen.yyds.py;
 
+import chen.yyds.py.iface.OnScreenDoubleClickEvent;
+import chen.yyds.py.iface.OnScreenRectSelectedEvent;
+import chen.yyds.py.iface.OnUiSelectedEvent;
+
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.border.EtchedBorder;
@@ -8,8 +12,10 @@ import java.awt.*;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Random;
+import java.util.stream.Collectors;
 
 public class ScreenPanel extends JLabel implements MouseListener, MouseMotionListener, KeyListener {
     private static final com.intellij.openapi.diagnostic.Logger LOGGER =
@@ -19,17 +25,17 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
     Color stokeRectColor = new Color(127,127,127,100);
     int sw;
     int sh;
-    String drawScreenImage;
+    String drawScreenImagePath;
     BufferedImage currentImage;
     BufferedImage subRealImage;
     Rectangle realRectangle = new Rectangle();
 
 
     // 回调到父窗口的事件
-    ImageToolForm.OnScreenRectSelectedEvent selectedCallBack;
-    ImageToolForm.OnUiSelectedEvent onUiSelectedCallback;
+    OnScreenRectSelectedEvent selectedCallBack;
+    OnUiSelectedEvent onUiSelectedCallback;
 
-    ImageToolForm.OnScreenDoubleClickEvent onScreenDoubleClickEvent;
+    OnScreenDoubleClickEvent onScreenDoubleClickEvent;
 
     long lastClickTime;
     double scaleRatio = 0;
@@ -39,7 +45,7 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
     Graphics2D g2d;
 
     int dragCount = 0;
-    public ScreenPanel(int w, int h, ImageToolForm.OnScreenRectSelectedEvent call, ImageToolForm.OnUiSelectedEvent call2) {
+    public ScreenPanel(int w, int h, OnScreenRectSelectedEvent call, OnUiSelectedEvent call2) {
         this.setVisible(true);
         this.setLayout(new FlowLayout(FlowLayout.LEFT, 10, 10));
         this.sw = w;
@@ -84,9 +90,9 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
     }
     // 静态函数===========《《《
     public void resetDrawImage(String path) {
-        drawScreenImage = path;
+        drawScreenImagePath = path;
         try {
-            currentImage =  ImageIO.read(new File(drawScreenImage));
+            currentImage =  ImageIO.read(new File(drawScreenImagePath));
             this.drawScreen();
         } catch (Exception ignore) {}
     }
@@ -100,6 +106,8 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
     }
 
     private long lastDrawScreen = 0;
+
+    // 设置显示屏幕的宽高!
     public void setScreenSize(int w, int h) {
         if (getGraphics() != null) {
             g2d = (Graphics2D) getGraphics().create();
@@ -110,9 +118,16 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
             invalidate();
         } else {
             if (scaleRatio > 0) {
-                this.sh = h;
-                this.sw = Math.round(Math.floorDiv(this.sh * currentImage.getWidth(), currentImage.getHeight()));
-                setSize(this.sw, this.sh);
+                if (currentImage.getWidth() < currentImage.getHeight()) {
+                    this.sh = h;
+                    this.sw = Math.round(Math.floorDiv(this.sh * currentImage.getWidth(), currentImage.getHeight()));
+                    setSize(this.sw, this.sh);
+                } else {
+                    // 横屏得缩小3倍!
+                    this.sh = Math.round(Math.floorDiv(h, 3));
+                    this.sw = Math.round(Math.floorDiv(this.sh * currentImage.getWidth(), currentImage.getHeight()));
+                    setSize(this.sw, this.sh);
+                }
                 // 画慢一点 有点卡
                 if (System.currentTimeMillis() - lastDrawScreen > 1500) {
                     this.drawScreen();
@@ -144,12 +159,13 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
         int newSw = (int)Math.round(screenWidth*scaleRatio);
         if (newSw != sw) {
             sw = newSw;
+            // 如果外面重新拉了高度, 则重设显示大小!
             this.setSize(sw, sh);
         }
         Image resized = currentImage.getScaledInstance(sw, sh, Image.SCALE_AREA_AVERAGING);
         this.setText(null);
         this.setIcon(new ImageIcon(resized));
-        this.setSize(this.sw, this.sh);
+        this.setSize(sw, sh);
         this.invalidate();
         g2d.setStroke(dashed);
     }
@@ -169,7 +185,9 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
     }
 
     public void drawUiDumpRect(MouseEvent e, NodeObject clickNodes) {
+        Color col = randomColor();
         if (currentImage != null) {
+
             if (e != null) {
                 int realX = (int)Math.round(e.getX()/scaleRatio);
                 int realY = (int)Math.round(e.getY()/scaleRatio);
@@ -177,24 +195,62 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
                 LOGGER.warn(">> Real Pos x:"  + realX  + " y:" + realY);
                 Map<NodeObject, DefaultMutableTreeNode> nodes = HierarchyParser.INSTANCE.allInRectExceptLayout(realX, realY);
                 if (nodes.isEmpty()) return;
-                // g2d.clearRect(0,0, sw, sh);
-                for (NodeObject node : nodes.keySet()) {
-                    g2d.setColor(randomColor());
+
+                // 此处还没想到办法如何清理之前的控件!
+
+                // 按照面积顺序开画
+                java.util.List<NodeObject> sortedList = nodes.keySet().stream().sorted((nodeObject1, nodeObject2)-> {
+                    return nodeObject2.getBounds().getWidth()* nodeObject2.getBounds().getHeight() - nodeObject1.getBounds().getWidth()*nodeObject1.getBounds().getHeight();
+                }).collect(Collectors.toList());
+                // 重新创造的排序的map队列
+                LinkedHashMap<NodeObject, DefaultMutableTreeNode> sortedNodes = new LinkedHashMap<>();
+                for (NodeObject node : sortedList) {
+                    g2d.setColor(col);
                     g2d.drawRect((int)Math.round(node.getBounds().getP1x()*scaleRatio),
                             (int)Math.round(node.getBounds().getP1y()*scaleRatio),
                             (int)Math.round(node.getBounds().getWidth()*scaleRatio),
                             (int)Math.round(node.getBounds().getHeight()*scaleRatio));
-                    LOGGER.warn("Draw:" + node + " # " + node.getBounds());
+                    LOGGER.warn("DrawNodeRect:"  +  node.getDepth() +  " " + node + " # " + node.getBounds());
+                    sortedNodes.put(node, nodes.get(node));
                 }
-                onUiSelectedCallback.onSelected(nodes.values());
+                // 回调控件树选择
+                onUiSelectedCallback.onSelected(sortedNodes.values());
             } else {
-                    g2d.setColor(randomColor());
+                    g2d.setColor(col);
                     g2d.drawRect((int)Math.round(clickNodes.getBounds().getP1x()*scaleRatio),
                             (int)Math.round(clickNodes.getBounds().getP1y()*scaleRatio),
                             (int)Math.round(clickNodes.getBounds().getWidth()*scaleRatio),
                             (int)Math.round(clickNodes.getBounds().getHeight()*scaleRatio));
                     LOGGER.warn("Draw:" + clickNodes + " # " + clickNodes.getBounds());
             }
+        }
+    }
+
+    public void drawUiSearchNode(String filter) {
+        Color col = randomColor();
+        if (currentImage != null) {
+                Map<NodeObject, DefaultMutableTreeNode> nodes = HierarchyParser.INSTANCE.allInRectContainString(filter);
+                LOGGER.warn("allInRectContainString: " + nodes.size());
+                if (nodes.isEmpty() || nodes.size() > 30) return;
+                // 此处还没想到办法如何清理之前的控件!
+
+                // 按照面积顺序开画
+                java.util.List<NodeObject> sortedList = nodes.keySet().stream().sorted((nodeObject1, nodeObject2)-> {
+                    return nodeObject2.getBounds().getWidth()* nodeObject2.getBounds().getHeight() - nodeObject1.getBounds().getWidth()*nodeObject1.getBounds().getHeight();
+                }).collect(Collectors.toList());
+                // 重新创造的排序的map队列
+                LinkedHashMap<NodeObject, DefaultMutableTreeNode> sortedNodes = new LinkedHashMap<>();
+                for (NodeObject node : sortedList) {
+                    g2d.setColor(col);
+                    g2d.drawRect((int)Math.round(node.getBounds().getP1x()*scaleRatio),
+                            (int)Math.round(node.getBounds().getP1y()*scaleRatio),
+                            (int)Math.round(node.getBounds().getWidth()*scaleRatio),
+                            (int)Math.round(node.getBounds().getHeight()*scaleRatio));
+                    LOGGER.warn("DrawNodeRect:"  +  node.getDepth() +  " " + node + " # " + node.getBounds());
+                    sortedNodes.put(node, nodes.get(node));
+                }
+                // 回调控件树选择
+                onUiSelectedCallback.onSelected(sortedNodes.values());
         }
     }
 
@@ -249,7 +305,9 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
             LOGGER.warn("==========Sub:......"  + scaleRatio + "  " + realRectangle + "  StartXY:" + rectStartPoint.x + "," + rectStartPoint.y);
             // 鼠标释放，计算出真正裁剪图像
             this.subRealImage = currentImage.getSubimage(realRectangle.x, realRectangle.y, realRectangle.width, realRectangle.height);
-            String desc = String.format("左上角: %d,%d | 图像大小 %d x %d", realRectangle.x, realRectangle.y, realRectangle.width, realRectangle.height);
+            String desc = String.format("左上角: %d,%d | 图像大小 %d x %d | (%.2f, %.2f, %.2f, %.2f)", realRectangle.x, realRectangle.y, realRectangle.width, realRectangle.height,
+                    (double)realRectangle.x/currentImage.getWidth(), (double)realRectangle.y / currentImage.getHeight(),
+                    (double)realRectangle.getWidth()/currentImage.getWidth(), (double)realRectangle.getHeight()/currentImage.getHeight());
             // 缩放显示
             selectedCallBack.onSelected(zoomImage(this.subRealImage,130, 130), desc);
             // LOGGER.warn("draw realRectangle: " + realRectangle);
