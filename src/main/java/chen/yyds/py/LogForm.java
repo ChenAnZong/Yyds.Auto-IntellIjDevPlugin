@@ -27,6 +27,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
+import java.lang.reflect.InvocationTargetException;
 
 
 public class LogForm implements MouseListener {
@@ -64,20 +65,23 @@ public class LogForm implements MouseListener {
     }
 
     interface FetchCallback {
-         void appendLog(String content);
+         void appendLog(String content) throws InterruptedException, InvocationTargetException;
          void clear();
     }
 
     FetchCallback callback = new FetchCallback(){
+        private long count = 1;
         @Override
-        public void appendLog(String content) {
-            SwingUtilities.invokeLater(new Runnable() {
+        public void appendLog(String content) throws InterruptedException, InvocationTargetException {
+            SwingUtilities.invokeAndWait(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        LOGGER.warn("#appendLog >>> " + content);
+                        // LOGGER.warn("#appendLog >>> " + content);
                         appendToPane(content);
-                        scrollPanel.getVerticalScrollBar().setValue(scrollPanel.getVerticalScrollBar().getMaximum());
+                        if (count++ % 10 == 0) {
+                            scrollPanel.getVerticalScrollBar().setValue(scrollPanel.getVerticalScrollBar().getMaximum());
+                        }
                     } catch (Exception e) {
                         LOGGER.error("#APPENDLOG ERROR", e);
                     }
@@ -118,7 +122,7 @@ public class LogForm implements MouseListener {
         }
     }
 
-    private void appendToPane(String msg) {
+    private synchronized void appendToPane(String msg) {
         StyleContext sc = StyleContext.getDefaultStyleContext();
         Color c;
         if (msg.contains("err:")) {
@@ -141,7 +145,8 @@ public class LogForm implements MouseListener {
 
         AttributeSet aset = sc.addAttribute(SimpleAttributeSet.EMPTY, StyleConstants.Foreground, c);
         aset = sc.addAttribute(aset, StyleConstants.FontFamily, "Lucida Console");
-        aset = sc.addAttribute(aset, StyleConstants.Alignment, StyleConstants.ALIGN_JUSTIFIED);
+        aset = sc.addAttribute(aset, StyleConstants.Alignment, StyleConstants.ALIGN_LEFT);
+
 
         int len = logPanel.getDocument().getLength();
         logPanel.setCaretPosition(len);

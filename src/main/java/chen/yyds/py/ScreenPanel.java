@@ -101,8 +101,14 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
         try {
             File imageFile = new File(fileName);
             if (!imageFile.getParentFile().exists()) imageFile.getParentFile().mkdirs();
-            ImageIO.write(subRealImage, "jpg", imageFile);
-        } catch (Exception ignore) {}
+            boolean saveOk = ImageIO.write(subRealImage, "jpg", imageFile);
+            LOGGER.warn("SaveSub:" + saveOk);
+            if (!saveOk) {
+                Notifyer.notifyError("保存图片区域失败", "!注意确保载入的图片为JPG格式, 否则可能导致无法正常裁剪并输出!");
+            }
+        } catch (Exception e) {
+            LOGGER.error("SaveSubError", e);
+        }
     }
 
     private long lastDrawScreen = 0;

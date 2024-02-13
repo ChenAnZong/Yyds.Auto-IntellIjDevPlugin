@@ -103,7 +103,7 @@ abstract class EngineConnector {
 
     fun engineWaitApiCall(request: RpcDataModel): RpcDataModel {
         reqQueue.add(request)
-        addDebugLogToQueue("[插件调试输出]发送到远程请求设备:$request")
+        addDebugLogToQueue("[插件调试输出]发送到远程请求设备:$request\n")
         while (!resQueue.containsKey(request.uuid)) {
             Thread.sleep(1000)
         }
@@ -126,12 +126,13 @@ abstract class EngineConnector {
                         startConnectLogJob()
                     }
                 }
-                Thread.sleep(10_000)
+                Thread.sleep(3_000)
             }
         }
     }
 
-    private fun startConnectApiJob() {
+    @Synchronized
+    private fun  startConnectApiJob() {
 //        val handler = CoroutineExceptionHandler { _, e ->
 //            LOGGER.error("==========CoroutineExceptionHandler==========", e)
 //        }
@@ -169,6 +170,7 @@ abstract class EngineConnector {
         isApiConnecting.set(false)
     }
 
+    @Synchronized
     fun disConnect() {
         runBlocking {
             jobs.forEach { it.cancel("disConnect() Manually!") }
@@ -186,6 +188,7 @@ abstract class EngineConnector {
         }
     }
 
+    @Synchronized
     fun reConnect(ip: String) {
         runBlocking {
             setDeviceIp(ip)
@@ -201,6 +204,7 @@ abstract class EngineConnector {
         return deviceIp.get()
     }
 
+    @Synchronized
     @OptIn(ExperimentalSerializationApi::class)
     fun startConnectLogJob() {
         val handler = CoroutineExceptionHandler { _, e ->

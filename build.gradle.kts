@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "chen.yyds"
-version = "1.49"
+version = "1.492"
 
 repositories {
     mavenCentral()
