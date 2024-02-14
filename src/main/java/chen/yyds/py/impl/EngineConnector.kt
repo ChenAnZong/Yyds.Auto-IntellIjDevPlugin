@@ -131,12 +131,11 @@ abstract class EngineConnector {
         }
     }
 
-    @Synchronized
     private fun  startConnectApiJob() {
 //        val handler = CoroutineExceptionHandler { _, e ->
 //            LOGGER.error("==========CoroutineExceptionHandler==========", e)
 //        }
-
+        LOGGER.warn("startConnectApiJob()")
         mApiClient = HttpClient(Java) {
             install(WebSockets) {
                 contentConverter = KotlinxWebsocketSerializationConverter(Cbor)
@@ -204,9 +203,10 @@ abstract class EngineConnector {
         return deviceIp.get()
     }
 
-    @Synchronized
+
     @OptIn(ExperimentalSerializationApi::class)
     fun startConnectLogJob() {
+        LOGGER.warn("startConnectLogJob()")
         val handler = CoroutineExceptionHandler { _, e ->
             LOGGER.warn("==========CoroutineExceptionHandler==========", e)
         }

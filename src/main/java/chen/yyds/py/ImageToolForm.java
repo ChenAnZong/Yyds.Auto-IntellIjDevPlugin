@@ -28,6 +28,7 @@ import com.intellij.ui.SearchTextField;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.components.JBTextField;
 import com.intellij.util.ui.JBFont;
+import com.intellij.util.ui.UIUtil;
 
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
@@ -335,7 +336,8 @@ public class ImageToolForm {
                             DefaultMutableTreeNode treeNode = HierarchyParser.INSTANCE.parse(uiXmlPath, rootNode);
                             DefaultTreeModel myModel = new DefaultTreeModel(treeNode);
                             uiDumpTree = new JTree(myModel);
-                            uiDumpTree.setForeground(JBColor.foreground());
+                            uiDumpTree.setForeground(UIUtil.getTreeForeground());
+                            uiDumpTree.setBackground(UIUtil.getTreeBackground());
                             uiDumpTree.setVisible(true);
                             uiDumpTree.setAutoscrolls(true);
                             uiDumpTree.setCellRenderer(new NodeTreeCellRender());

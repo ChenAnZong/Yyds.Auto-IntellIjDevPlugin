@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "chen.yyds"
-version = "1.492"
+version = "1.5"
 
 repositories {
     mavenCentral()
@@ -21,7 +21,7 @@ repositories {
 // Configure Gradle IntelliJ Plugin
 // Read more: https://plugins.jetbrains.com/docs/intellij/tools-gradle-intellij-plugin.html
 intellij {
-    version.set("2021.3.3")
+    version.set("2022.2.2")
     type.set("PC") // Target IDE Platform
     intellij.updateSinceUntilBuild.set(false)
     plugins.set(listOf(/* Plugin Dependencies */))
@@ -53,6 +53,10 @@ tasks {
     }
 }
 
+tasks.withType<JavaCompile> {
+    options.encoding = "utf-8"
+}
+
 buildscript {
     repositories {
         mavenCentral()
@@ -65,7 +69,7 @@ buildscript {
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0")
     }
     dependencies {
-        classpath("org.jetbrains.intellij.plugins:gradle-intellij-plugin:1.11.0")
+        classpath("org.jetbrains.intellij.plugins:gradle-intellij-plugin:1.16.0")
     }
 }
 
