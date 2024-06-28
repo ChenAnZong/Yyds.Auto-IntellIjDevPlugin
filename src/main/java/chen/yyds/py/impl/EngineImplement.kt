@@ -24,6 +24,7 @@ object EngineImplement : EngineConnector() {
     fun notifyStopProject() {
         engineTimeoutApiCallOrNull(RpcDataModel(method =RPC_METHOD.ENGINE_ABORT))
     }
+
     /**
      * 获取手机截图 保存在电脑一个固定的位置 再返回路径
      */

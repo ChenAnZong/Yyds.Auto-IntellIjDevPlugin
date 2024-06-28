@@ -289,11 +289,11 @@ public class ImageToolForm {
                     if (fetchScreenShot != null) {
                         screenShotPanel.resetDrawImage(fetchScreenShot);
                     } else {
-                        Notifyer.notifyError("开发助手", "截图失败，无法获取图片");
+                        Notifyer.notifyError("开发助手", "截图失败，无法获取图片, 请尝试多点两此");
                         return;
                     }
                 } catch (Exception resetError) {
-                    Notifyer.notifyError("开发助手", "截图错误，请联系开发者处理!\n" + resetError.getMessage());
+                    Notifyer.notifyError("开发助手", "截图错误，请多点几次或者联系开发者处理!\n" + resetError.getMessage());
                 }
 
                 // 要加载两次图片，尝试调整两次！
@@ -324,7 +324,7 @@ public class ImageToolForm {
                 new Thread(()-> {
                     String uiXmlPath = fetchUiaDump();
                     if (uiXmlPath == null) {
-                        Notifyer.notifyError("开发助手","获取控件信息失败！请联系开发者解决");
+                        Notifyer.notifyError("开发助手","获取控件信息失败！请多点两次或者联系开发者解决");
                         return;
                     }
                     String foreground = fetchForeground();

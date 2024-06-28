@@ -19,6 +19,7 @@ object RPC_METHOD {
     const val AUTO_API_SHELL = "api.shell"
     const val AUTO_API_FOREGROUND = "foreground"
     const val DISCONNECT = "bye"
+    const val HEARTBEAT = "beat"
 }
 
 

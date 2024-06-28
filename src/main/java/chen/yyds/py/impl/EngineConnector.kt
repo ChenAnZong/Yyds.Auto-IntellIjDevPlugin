@@ -1,10 +1,9 @@
 package impl
 
-import chen.yyds.py.Notifyer
+import chen.yyds.py.impl.ProjectServerImpl
+import chen.yyds.py.impl.RPC_METHOD
 import chen.yyds.py.impl.RpcDataModel
-import com.google.common.util.concurrent.Atomics
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.wm.WindowManager
 import io.ktor.client.*
 import io.ktor.client.engine.java.*
 import io.ktor.client.plugins.*
@@ -24,8 +23,6 @@ import java.util.concurrent.ConcurrentSkipListMap
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
-import kotlin.collections.ArrayList
-import kotlin.collections.HashSet
 import kotlin.concurrent.thread
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -36,6 +33,7 @@ abstract class EngineConnector {
 
     private val RPC_TIMEOUT = 12_000L
     private val RPC_PORT = 61140
+    private var isUserDisconnect = false;
     private val logQueue: LinkedBlockingQueue<String> = LinkedBlockingQueue()
 
     private val deviceIp:AtomicReference<String> = AtomicReference("192.168.1.2");
@@ -57,13 +55,20 @@ abstract class EngineConnector {
 
     private val jobs:HashSet<Job> = HashSet()
 
+    private var lastHeartBeat:Long = System.currentTimeMillis()
+
     suspend fun DefaultClientWebSocketSession.pullRes() {
         try {
             while (true) {
                 val response = receiveDeserialized<RpcDataModel>()
+                LOGGER.warn("Receive: $response")
+                if (response.method == RPC_METHOD.HEARTBEAT) {
+                    delay(700)
+                    lastHeartBeat = System.currentTimeMillis()
+                    continue
+                }
                 resQueue[response.uuid] = response
-                delay(200)
-                LOGGER.warn("Receive: ${response}")
+                delay(400)
                 addDebugLogToQueue("[插件调试输出]从远程设备收到:$response\n")
             }
         } catch (e: Exception) {
@@ -112,30 +117,45 @@ abstract class EngineConnector {
 
     // 首次初始化 - 连接
     public fun ensureConnect() {
+        LOGGER.warn("ensureConnect(), isUserDisconnect:$isUserDisconnect")
         thread {
-            while (true) {
+            while (!isUserDisconnect) {
+                // LOGGER.warn("[API]ensureConnect():$isApiConnecting")
                 if (!isApiConnecting.get()) {
-                    addDebugLogToQueue("[插件调试输出]控制断连, 正在重新连接 ${deviceIp}\n")
-                    thread {
+                    try {
+                        addDebugLogToQueue("[插件调试输出]控制通讯断连, 3秒后重新连接 ${deviceIp}\n")
                         startConnectApiJob()
-                    }
-                }
-                if (!isLogConnecting.get()) {
-                    addDebugLogToQueue("[插件调试输出]日志断连, 正在重新连接 ${deviceIp}\n")
-                    thread {
-                        startConnectLogJob()
+                    } catch (e:Exception) {
+                        LOGGER.warn(e)
                     }
                 }
                 Thread.sleep(3_000)
             }
         }
+        thread {
+
+            while (!isUserDisconnect) {
+                // LOGGER.warn("[LOG]ensureConnect():${isLogConnecting.get()}")
+                if (!isLogConnecting.get()) {
+                    try {
+                        addDebugLogToQueue("[插件调试输出]日志通讯断连, 3秒后重新连接 ${deviceIp}\n")
+                        startConnectLogJob()
+                    } catch (e:Exception) {
+                        LOGGER.warn(e)
+                    }
+                }
+                Thread.sleep(3_000)
+            }
+
+        }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     @Synchronized
-    private fun  startConnectApiJob() {
-//        val handler = CoroutineExceptionHandler { _, e ->
-//            LOGGER.error("==========CoroutineExceptionHandler==========", e)
-//        }
+    private fun startConnectApiJob() {
+        val handler = CoroutineExceptionHandler { _, e ->
+            LOGGER.error("==========CoroutineExceptionHandler==========", e)
+        }
 
         mApiClient = HttpClient(Java) {
             install(WebSockets) {
@@ -149,7 +169,8 @@ abstract class EngineConnector {
             install(Logging)
         }
 
-        runBlocking {
+        GlobalScope.launch(handler) {
+            try {
                 isApiConnecting.set(true)
                 LOGGER.warn("Api C START >>>")
                 val mApiSession = mApiClient!!.webSocketSession(
@@ -166,13 +187,19 @@ abstract class EngineConnector {
                 LOGGER.warn("Api C End")
                 mApiSession.close()
                 // Notifyer.notifyError("开发助手", "已断开设备API链接!")
+            } catch (e:Exception) {
+                LOGGER.error(e)
+            } finally {
+                isApiConnecting.set(false)
+            }
         }
-        isApiConnecting.set(false)
     }
 
     @Synchronized
     fun disConnect() {
         runBlocking {
+            LOGGER.warn("Start disConnect()")
+            isUserDisconnect = true;
             jobs.forEach { it.cancel("disConnect() Manually!") }
             jobs.clear()
 
@@ -184,15 +211,18 @@ abstract class EngineConnector {
 
             isLogConnecting.set(false)
             isApiConnecting.set(false)
-            LOGGER.warn("disConnect()")
+            LOGGER.warn("End disConnect()")
         }
     }
 
     @Synchronized
     fun reConnect(ip: String) {
         runBlocking {
+            LOGGER.warn("reConnect(${ip})")
             setDeviceIp(ip)
             disConnect()
+            isUserDisconnect = false
+            ensureConnect()
         }
     }
 
@@ -205,7 +235,7 @@ abstract class EngineConnector {
     }
 
     @Synchronized
-    @OptIn(ExperimentalSerializationApi::class)
+    @OptIn(ExperimentalSerializationApi::class, DelicateCoroutinesApi::class)
     fun startConnectLogJob() {
         val handler = CoroutineExceptionHandler { _, e ->
             LOGGER.warn("==========CoroutineExceptionHandler==========", e)
@@ -221,9 +251,9 @@ abstract class EngineConnector {
             install(Logging)
         }
 
-        runBlocking {
-            launch(handler) {
-                LOGGER.warn("LOG C START >>>")
+        LOGGER.warn("LOG C START2 >>>")
+        GlobalScope.launch(handler) {
+            try {
                 mLogClient!!.webSocket(
                     method = HttpMethod.Get,
                     host = deviceIp.get(),
@@ -249,10 +279,14 @@ abstract class EngineConnector {
                     jobs.add(logjob)
                     logjob.join()
                 }
+            } catch (e:Exception) {
+                LOGGER.warn(e)
+            } finally {
+                isLogConnecting.set(false)
+                LOGGER.warn("LOG C END")
             }
         }
-        isLogConnecting.set(false)
-        LOGGER.warn("LOG C END")
+
         // Notifyer.notifyError("开发助手", "已断开设备日志链接!")
     }
 

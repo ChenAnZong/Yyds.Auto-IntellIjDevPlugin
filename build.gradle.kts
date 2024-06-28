@@ -1,12 +1,15 @@
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "1.7.10"
+    // id("org.jetbrains.kotlin.jvm") version "1.7.10"
     id("org.jetbrains.intellij") version "1.8.0"
     id("org.jetbrains.kotlin.plugin.serialization") version "1.8.0"
+    kotlin("jvm") version "1.7.21"
 }
 
 group = "chen.yyds"
-version = "1.492"
+version = "1.51"
 
 repositories {
     mavenCentral()
@@ -100,5 +103,14 @@ dependencies {
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")  {
         exclude(group="org.slf4j")
     }
+    implementation(kotlin("stdlib-jdk8"))
 
+}
+val compileKotlin: KotlinCompile by tasks
+compileKotlin.kotlinOptions {
+    jvmTarget = "1.8"
+}
+val compileTestKotlin: KotlinCompile by tasks
+compileTestKotlin.kotlinOptions {
+    jvmTarget = "1.8"
 }

@@ -25,7 +25,6 @@ public class ProjectServerImpl implements Disposable {
         Properties properties = loadProjectProperties();
         String debugDeviceIp = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
         EngineImplement.INSTANCE.setDeviceIp(debugDeviceIp);
-        EngineImplement.INSTANCE.ensureConnect();
     }
 
     public Properties loadProjectProperties() {
@@ -117,11 +116,18 @@ public class ProjectServerImpl implements Disposable {
     }
 
     public void reConnect() {
-        Properties properties = loadProjectProperties();
-        String ip = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
-        EngineImplement.INSTANCE.setDeviceIp(ip);
-        LOGGER.warn("Refresh Ip:" + ip);
-        EngineImplement.INSTANCE.reConnect(ip);
+        new Thread(()-> {
+            try {
+                LOGGER.warn("reConnect()");
+                Properties properties = loadProjectProperties();
+                String ip = properties.getProperty(Const.PROP_KEY_DEBUG_DEVICE_IP);
+                EngineImplement.INSTANCE.setDeviceIp(ip);
+                LOGGER.warn("Refresh Ip:" + ip);
+                EngineImplement.INSTANCE.reConnect(ip);
+            } catch (Exception e) {
+                LOGGER.error(e);
+            }
+        }).start();
     }
 
     public void disConnect() {
