@@ -58,26 +58,6 @@ public class XmlFormatter {
             return unformattedXml;
         }
     }
-
-//    public static String aa(String xml) {
-//        try {
-//            DocumentBuilder db = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-//            Document doc = db.parse(xml);
-//
-//            StringWriter output = new StringWriter();
-//            TransformerFactory tf = TransformerFactory.newInstance();
-//            Transformer transformer = tf.newTransformer(new StreamSource(xslt));
-//            transformer.transform(new DOMSource(doc), new StreamResult(output));
-//
-//            String html = output.toString();
-//
-//            // JEditorPane doesn't like the META tag...
-//            html = html.replace("<META http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">", "");
-//            return html;
-//        } catch (IOException | ParserConfigurationException | SAXException | TransformerException e) {
-//           return xml;
-//        }
-//    }
 }
 
 

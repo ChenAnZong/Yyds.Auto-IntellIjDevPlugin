@@ -3,6 +3,7 @@ package chen.yyds.py;
 import chen.yyds.py.iface.OnScreenDoubleClickEvent;
 import chen.yyds.py.iface.OnScreenRectSelectedEvent;
 import chen.yyds.py.iface.OnUiSelectedEvent;
+import com.intellij.ui.JBColor;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -22,7 +23,7 @@ public class ScreenPanel extends JLabel implements MouseListener, MouseMotionLis
             com.intellij.openapi.diagnostic.Logger.getInstance(ScreenPanel.class);
     Point rectStartPoint = new Point(0, 0);
     Point rectEndPoint = new Point();
-    Color stokeRectColor = new Color(127,127,127,100);
+    JBColor stokeRectColor = new JBColor(new Color(127,127,127,100), new Color(174,215,245,100));
     int sw;
     int sh;
     String drawScreenImagePath;

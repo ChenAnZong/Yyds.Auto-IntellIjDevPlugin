@@ -3,6 +3,7 @@ package chen.yyds.py;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.ui.JBColor;
 import com.intellij.util.ui.JBFont;
+import com.intellij.util.ui.UIUtil;
 
 import javax.swing.*;
 import javax.swing.tree.DefaultMutableTreeNode;
@@ -45,11 +46,11 @@ public class NodeTreeCellRender extends DefaultTreeCellRenderer {
             // If the node is a leaf and ends with "xxx"
             if (node.getCls().contains("Layout")) {
                 // Paint the node in blue
-                setForeground(JBColor.LIGHT_GRAY);
+                setForeground(UIUtil.getTextFieldForeground());
             } else if (node.getCls().endsWith("TextView")) {
                 setForeground(JBColor.CYAN);
             } else if (node.getCls().contains("Button")) {
-                setBackground(Color.PINK);
+                setBackground(JBColor.PINK);
             }
 
             if (leaf) {
