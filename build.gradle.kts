@@ -68,7 +68,7 @@ buildscript {
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.0")
     }
     dependencies {
-        classpath("org.jetbrains.intellij.plugins:gradle-intellij-plugin:1.11.0")
+        classpath("org.jetbrains.intellij.plugins:gradle-intellij-plugin:1.17.4")
     }
 }
 
@@ -82,7 +82,7 @@ configurations.all {
     }
 }
 
-val ktorVersion = "2.3.0"
+val ktorVersion = "2.3.10"
 
 dependencies {
     implementation("io.ktor:ktor-client-core:$ktorVersion") {
@@ -108,9 +108,9 @@ dependencies {
 }
 val compileKotlin: KotlinCompile by tasks
 compileKotlin.kotlinOptions {
-    jvmTarget = "1.8"
+    jvmTarget = "11"
 }
 val compileTestKotlin: KotlinCompile by tasks
 compileTestKotlin.kotlinOptions {
-    jvmTarget = "1.8"
+    jvmTarget = "11"
 }
